@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>T&M Sheet Sender</title>
+  <link rel="stylesheet" href="time-material.css">
+</head>
+<body>
+  <main class="app">
+    <section class="top">
+      <div class="brand-row">
+        <div class="brand" aria-label="Elliott Electric Inc logo">
+          <img src="logo.png" alt="Elliott Electric Inc logo" onerror="this.style.display='none';this.nextElementSibling.style.display='grid';">
+          <span class="brand-fallback"><strong>EEI</strong><em>Elliott Electric Inc</em></span>
+        </div>
+        <div>
+        <p class="eyebrow">Time and material sheet</p>
+        <h1>T&M Sheet Sender</h1>
+        <p class="lede">Fill out a T&M sheet, save it, then open a ready-to-send email draft for that one sheet.</p>
+        </div>
+      </div>
+      <button class="btn" id="exportCsv" type="button">Export CSV</button>
+    </section>
+
+    <section class="setup-warning" id="setupWarning" hidden>
+      Supabase is not connected for T&M yet. Sheets are saved in this browser until the T&M table is added.
+    </section>
+
+    <section class="stats">
+      <article class="stat"><span>Sheets logged</span><strong id="totalCount">0</strong></article>
+      <article class="stat"><span>Email drafts ready</span><strong id="readyCount">0</strong></article>
+      <article class="stat"><span>Marked sent</span><strong id="sentCount">0</strong></article>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>Fill Out T&M Sheet</h2>
+        <form class="form" id="tmForm">
+          <div class="split">
+            <label>Date<input id="workDate" type="date" required></label>
+            <label>Job Number<input id="sheetNumber" placeholder="24796"></label>
+          </div>
+          <div class="split">
+            <label>Project<input id="project" placeholder="Project name"></label>
+            <label>Requested by<input id="requestedBy" placeholder="Name / company"></label>
+          </div>
+          <label>Location<input id="location" placeholder="Building, room, floor, area"></label>
+          <label>Work performed<textarea id="workPerformed" rows="4" required placeholder="Describe the T&M work performed"></textarea></label>
+          <section class="employee-section">
+            <div class="mini-toolbar">
+              <h3>Employees</h3>
+              <button class="btn" id="addEmployee" type="button">Add Employee</button>
+            </div>
+            <div class="employee-list" id="employeeList"></div>
+          </section>
+          <label>Material used<textarea id="materials" rows="3" placeholder="List materials used"></textarea></label>
+          <label>Material cost<input id="materialCost" type="number" min="0" step="0.01" placeholder="0.00"></label>
+          <section class="equipment-section">
+            <div class="mini-toolbar">
+              <h3>Equipment / Other</h3>
+              <button class="btn" id="addEquipment" type="button">Add Equipment / Other</button>
+            </div>
+            <div class="equipment-list" id="equipmentList"></div>
+          </section>
+          <label>Send to email<input id="sendTo" type="email" placeholder="person@example.com"></label>
+          <label>Notes<textarea id="notes" rows="2" placeholder="Photos, ticket backup, change order notes"></textarea></label>
+          <section class="signature-section">
+            <div class="mini-toolbar">
+              <h3>Signature</h3>
+              <button class="btn" id="clearSignature" type="button">Clear Signature</button>
+            </div>
+            <canvas id="signaturePad" width="720" height="220" aria-label="Signature pad"></canvas>
+            <p class="signature-hint">Sign here with a finger, stylus, or mouse.</p>
+          </section>
+          <button class="btn primary" type="submit">Save Sheet & Make Draft</button>
+        </form>
+        <div class="preview" id="emailPreview" hidden>
+          <h3>Email Draft Ready</h3>
+          <pre id="emailText"></pre>
+          <div class="row left">
+            <a class="btn primary" id="emailLink" href="#">Open Email Draft</a>
+            <button class="btn" id="markPreviewSent" type="button">Mark Sent</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="toolbar">
+          <h2>T&M Sheets</h2>
+          <input id="search" placeholder="Search sheets, work, location">
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Date</th><th>Sheet</th><th>Work</th><th>Hours</th><th>Total</th><th>Email</th><th></th></tr>
+            </thead>
+            <tbody id="sheetRows"><tr><td colspan="7">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+  </main>
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="time-material.js"></script>
+</body>
+</html>
