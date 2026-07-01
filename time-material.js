@@ -335,12 +335,12 @@ function formattedSheetHtml(sheet) {
 }
 function sheetFileName(sheet) {
   var baseName = ['TM', sheet.sheet_number || 'sheet', sheet.work_date || ''].join('-').replace(/[^a-z0-9-]+/gi, '-').replace(/-+/g, '-');
-  return baseName + '.html';
+  return baseName + '.doc';
 }
 function downloadSheet(id) {
   var sheet = tmState.sheets.find(function(item) { return String(item.id) === String(id); });
   if (!sheet) return;
-  var blob = new Blob([formattedSheetHtml(sheet)], { type: 'text/html' });
+  var blob = new Blob([formattedSheetHtml(sheet)], { type: 'application/msword' });
   var link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = sheetFileName(sheet);
