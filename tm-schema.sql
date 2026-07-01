@@ -13,6 +13,7 @@ create table if not exists time_material_sheets (
   labor_hours numeric,
   labor_rate numeric,
   materials text,
+  material_items jsonb,
   equipment_items jsonb,
   material_cost numeric,
   other_cost numeric,
@@ -22,6 +23,13 @@ create table if not exists time_material_sheets (
   email_sent boolean not null default false,
   created_at timestamptz not null default now()
 );
+
+
+-- Safe updates for existing T&M tables.
+alter table time_material_sheets add column if not exists employees jsonb;
+alter table time_material_sheets add column if not exists material_items jsonb;
+alter table time_material_sheets add column if not exists equipment_items jsonb;
+alter table time_material_sheets add column if not exists signature_data text;
 
 alter table time_material_sheets enable row level security;
 
