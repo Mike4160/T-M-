@@ -404,80 +404,67 @@ function excelEmpty(count) {
 function excelRow(cells) { return '<Row>' + cells.join('') + '</Row>'; }
 function excelSheetXml(sheet) {
   var employees = getEmployees(sheet);
-  var equipment = getEquipmentItems(sheet);
   var materials = getMaterialItems(sheet);
-  var rows = [];
-  rows.push(excelRow([excelCell('TIME AND MATERIAL SHEET', 'String', 'Title'), excelEmpty(3)]));
-  rows.push(excelRow([excelCell('Project', 'String', 'Label'), excelCell(sheet.project || '', 'String', 'Value'), excelCell('Job Number', 'String', 'Label'), excelCell(sheet.sheet_number || '', 'String', 'Value')]));
-  rows.push(excelRow([excelCell('Date', 'String', 'Label'), excelCell(sheet.work_date || '', 'String', 'Value'), excelCell('Requested By', 'String', 'Label'), excelCell(sheet.requested_by || '', 'String', 'Value')]));
-  rows.push(excelRow([excelCell('Location', 'String', 'Label'), excelCell(sheet.location || '', 'String', 'Value'), excelCell('Signed', 'String', 'Label'), excelCell(sheet.signature_data ? 'Yes' : 'No', 'String', 'Value')]));
-  rows.push(excelRow([excelCell('Work Performed', 'String', 'Header'), excelEmpty(3)]));
-  rows.push(excelRow([excelCell(sheet.work_performed || '', 'String', 'Wrap'), excelEmpty(3)]));
-  rows.push(excelRow([excelCell('Employees', 'String', 'Header'), excelEmpty(3)]));
-  rows.push(excelRow([excelCell('Name', 'String', 'TableHead'), excelCell('Hours', 'String', 'TableHead'), excelCell('Rate', 'String', 'TableHead'), excelCell('Total', 'String', 'TableHead')]));
-  var employeeStart = rows.length + 1;
-  if (employees.length) {
-    employees.forEach(function(employee) {
-      rows.push(excelRow([
-        excelCell(employee.name || '', 'String'),
-        excelCell(Number(employee.hours || 0), 'Number', 'Number'),
-        excelCell(Number(employee.rate || 0), 'Number', 'Currency'),
-        excelCell('', 'Number', 'Currency', '=RC[-2]*RC[-1]')
-      ]));
-    });
-  } else {
-    rows.push(excelRow([excelCell('', 'String'), excelCell(0, 'Number', 'Number'), excelCell(0, 'Number', 'Currency'), excelCell('', 'Number', 'Currency', '=RC[-2]*RC[-1]')]));
-  }
-  var employeeEnd = rows.length;
-  rows.push(excelRow([excelCell('Labor Total', 'String', 'TotalLabel'), excelEmpty(2), excelCell('', 'Number', 'TotalCurrency', '=SUM(R' + employeeStart + 'C4:R' + employeeEnd + 'C4)')]));
-  rows.push(excelRow([excelCell('Material Used', 'String', 'Header'), excelEmpty(3)]));
-  rows.push(excelRow([excelCell('Material', 'String', 'TableHead'), excelCell('Amount Used', 'String', 'TableHead'), excelCell('Unit Price', 'String', 'TableHead'), excelCell('Total', 'String', 'TableHead')]));
-  var materialStart = rows.length + 1;
-  if (materials.length) {
-    materials.forEach(function(item) {
-      rows.push(excelRow([excelCell(item.description || '', 'String'), excelCell(Number(item.amount || 0), 'Number', 'Number'), excelCell(Number(item.unit_price || 0), 'Number', 'Currency'), excelCell('', 'Number', 'Currency', '=RC[-2]*RC[-1]')]));
-    });
-  } else {
-    rows.push(excelRow([excelCell('', 'String'), excelCell(0, 'Number', 'Number'), excelCell(0, 'Number', 'Currency'), excelCell('', 'Number', 'Currency', '=RC[-2]*RC[-1]')]));
-  }
-  var materialEnd = rows.length;
-  rows.push(excelRow([excelCell('Material Total', 'String', 'TotalLabel'), excelEmpty(2), excelCell('', 'Number', 'TotalCurrency', '=SUM(R' + materialStart + 'C4:R' + materialEnd + 'C4)')]));
-  rows.push(excelRow([excelCell('Equipment / Other', 'String', 'Header'), excelEmpty(3)]));
-  rows.push(excelRow([excelCell('Description', 'String', 'TableHead'), excelEmpty(2), excelCell('Cost', 'String', 'TableHead')]));
-  var equipmentStart = rows.length + 1;
-  if (equipment.length) {
-    equipment.forEach(function(item) {
-      rows.push(excelRow([excelCell(item.description || '', 'String'), excelEmpty(2), excelCell(Number(item.cost || 0), 'Number', 'Currency')]));
-    });
-  } else {
-    rows.push(excelRow([excelCell('', 'String'), excelEmpty(2), excelCell(0, 'Number', 'Currency')]));
-  }
-  var equipmentEnd = rows.length;
-  rows.push(excelRow([excelCell('Equipment / Other Total', 'String', 'TotalLabel'), excelEmpty(2), excelCell('', 'Number', 'TotalCurrency', '=SUM(R' + equipmentStart + 'C4:R' + equipmentEnd + 'C4)')]));
-  var laborTotalRow = employeeEnd + 1;
-  var materialTotalRow = laborTotalRow + 2 + (materials.length || 1);
-  var equipmentTotalRow = rows.length;
-  rows.push(excelRow([excelCell('Grand Total', 'String', 'GrandLabel'), excelEmpty(2), excelCell('', 'Number', 'GrandCurrency', '=R' + laborTotalRow + 'C4+R' + materialTotalRow + 'C4+R' + equipmentTotalRow + 'C4')]));
-  rows.push(excelRow([excelCell('Notes', 'String', 'Header'), excelEmpty(3)]));
-  rows.push(excelRow([excelCell(sheet.notes || '', 'String', 'Wrap'), excelEmpty(3)]));
-  rows.push(excelRow([excelCell('Authorized Signature', 'String', 'Label'), excelCell(sheet.signature_data ? 'Signed on file' : '', 'String', 'Value'), excelCell('Printed Name / Date', 'String', 'Label'), excelCell('', 'String', 'Value')]));
-  return '<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>' +
-    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">' +
-    '<Styles><Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Top"/><Font ss:FontName="Arial" ss:Size="10"/></Style>' +
-    '<Style ss:ID="Title"><Font ss:Bold="1" ss:Size="18"/><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/></Style>' +
-    '<Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#111111" ss:Pattern="Solid"/></Style>' +
-    '<Style ss:ID="TableHead"><Font ss:Bold="1"/><Interior ss:Color="#E9EEEC" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>' +
-    '<Style ss:ID="Label"><Font ss:Bold="1" ss:Color="#555555"/><Interior ss:Color="#F4F6F5" ss:Pattern="Solid"/></Style>' +
-    '<Style ss:ID="Value"><Font ss:Bold="1"/></Style>' +
-    '<Style ss:ID="Wrap"><Alignment ss:WrapText="1" ss:Vertical="Top"/></Style>' +
-    '<Style ss:ID="Number"><NumberFormat ss:Format="0.00"/></Style>' +
-    '<Style ss:ID="Currency"><NumberFormat ss:Format="$#,##0.00"/></Style>' +
-    '<Style ss:ID="TotalLabel"><Font ss:Bold="1"/><Interior ss:Color="#F4F6F5" ss:Pattern="Solid"/></Style>' +
-    '<Style ss:ID="TotalCurrency"><Font ss:Bold="1"/><NumberFormat ss:Format="$#,##0.00"/><Interior ss:Color="#F4F6F5" ss:Pattern="Solid"/></Style>' +
-    '<Style ss:ID="GrandLabel"><Font ss:Bold="1" ss:Size="12"/><Interior ss:Color="#DCE4E1" ss:Pattern="Solid"/></Style>' +
-    '<Style ss:ID="GrandCurrency"><Font ss:Bold="1" ss:Size="12"/><NumberFormat ss:Format="$#,##0.00"/><Interior ss:Color="#DCE4E1" ss:Pattern="Solid"/></Style></Styles>' +
-    '<Worksheet ss:Name="T&M Sheet"><Table ss:ExpandedColumnCount="4" ss:ExpandedRowCount="' + rows.length + '" x:FullColumns="1" x:FullRows="1">' +
-    '<Column ss:Width="220"/><Column ss:Width="90"/><Column ss:Width="90"/><Column ss:Width="110"/>' + rows.join('') + '</Table></Worksheet></Workbook>';
+  var equipment = getEquipmentItems(sheet);
+  var row = 1;
+  function td(value, cls, extra) { return '<td class="' + (cls || '') + '" ' + (extra || '') + '>' + escapeHtml(value == null ? '' : value) + '</td>'; }
+  function formula(expr, cls) { return '<td class="' + (cls || 'money') + '">=' + expr + '</td>'; }
+  function spacerRow() { html += '<tr class="spacer"><td colspan="4"></td></tr>'; row++; }
+  var html = '<html><head><meta charset="utf-8"><style>' +
+    'body{font-family:Arial,sans-serif}.sheet{width:100%}table{border-collapse:collapse;width:100%}td,th{border:1px solid #111;padding:7px;vertical-align:top}th{background:#e9eeec;text-align:left}.title{font-size:22px;font-weight:bold;border:0}.section{background:#111;color:#fff;font-weight:bold;text-transform:uppercase}.label{background:#f4f6f5;font-weight:bold}.money{mso-number-format:"$#,##0.00";text-align:right}.num{mso-number-format:"0.00";text-align:right}.total{background:#e9eeec;font-weight:bold}.grand{background:#dce4e1;font-weight:bold;font-size:14px}.wrap{white-space:normal}.signature{height:90px}.signature img{max-height:85px;max-width:280px}.spacer td{border:0;height:16px;background:#fff}' +
+    '</style></head><body><table class="sheet">';
+  html += '<tr><td class="title" colspan="4">TIME AND MATERIAL SHEET</td></tr>'; row++;
+  html += '<tr>' + td('Project','label') + td(sheet.project || '') + td('Job Number','label') + td(sheet.sheet_number || '') + '</tr>'; row++;
+  html += '<tr>' + td('Date','label') + td(sheet.work_date || '') + td('Requested By','label') + td(sheet.requested_by || '') + '</tr>'; row++;
+  html += '<tr>' + td('Location','label') + td(sheet.location || '') + td('Signed','label') + td(sheet.signature_data ? 'Yes' : 'No') + '</tr>'; row++;
+  spacerRow();
+  html += '<tr><td class="section" colspan="4">Work Performed</td></tr>'; row++;
+  html += '<tr><td class="wrap" colspan="4">' + escapeHtml(sheet.work_performed || '') + '</td></tr>'; row++;
+  spacerRow();
+  html += '<tr><td class="section" colspan="4">Employees</td></tr>'; row++;
+  html += '<tr><th>Name</th><th>Hours</th><th>Rate</th><th>Total</th></tr>'; row++;
+  var employeeStart = row;
+  var employeeList = employees.length ? employees : [{ name: '', hours: 0, rate: 0 }];
+  employeeList.forEach(function(employee) {
+    html += '<tr>' + td(employee.name || '') + td(employee.hours || 0, 'num') + td(employee.rate || 0, 'money') + formula('B' + row + '*C' + row) + '</tr>';
+    row++;
+  });
+  var employeeEnd = row - 1;
+  var laborTotalRow = row;
+  html += '<tr>' + td('Labor Total','total') + '<td class="total"></td><td class="total"></td>' + formula('SUM(D' + employeeStart + ':D' + employeeEnd + ')', 'money total') + '</tr>'; row++;
+  spacerRow();
+  html += '<tr><td class="section" colspan="4">Material Used</td></tr>'; row++;
+  html += '<tr><th>Material</th><th>Amount Used</th><th>Unit Price</th><th>Total</th></tr>'; row++;
+  var materialStart = row;
+  var materialList = materials.length ? materials : [{ description: '', amount: 0, unit_price: 0 }];
+  materialList.forEach(function(item) {
+    html += '<tr>' + td(item.description || '') + td(item.amount || 0, 'num') + td(item.unit_price || 0, 'money') + formula('B' + row + '*C' + row) + '</tr>';
+    row++;
+  });
+  var materialEnd = row - 1;
+  var materialTotalRow = row;
+  html += '<tr>' + td('Material Total','total') + '<td class="total"></td><td class="total"></td>' + formula('SUM(D' + materialStart + ':D' + materialEnd + ')', 'money total') + '</tr>'; row++;
+  spacerRow();
+  html += '<tr><td class="section" colspan="4">Equipment / Other</td></tr>'; row++;
+  html += '<tr><th colspan="3">Description</th><th>Cost</th></tr>'; row++;
+  var equipmentStart = row;
+  var equipmentList = equipment.length ? equipment : [{ description: '', cost: 0 }];
+  equipmentList.forEach(function(item) {
+    html += '<tr><td colspan="3">' + escapeHtml(item.description || '') + '</td>' + td(item.cost || 0, 'money') + '</tr>';
+    row++;
+  });
+  var equipmentEnd = row - 1;
+  var equipmentTotalRow = row;
+  html += '<tr>' + td('Equipment / Other Total','total') + '<td class="total"></td><td class="total"></td>' + formula('SUM(D' + equipmentStart + ':D' + equipmentEnd + ')', 'money total') + '</tr>'; row++;
+  spacerRow();
+  html += '<tr>' + td('Grand Total','grand') + '<td class="grand"></td><td class="grand"></td>' + formula('D' + laborTotalRow + '+D' + materialTotalRow + '+D' + equipmentTotalRow, 'money grand') + '</tr>'; row++;
+  spacerRow();
+  html += '<tr><td class="section" colspan="4">Notes</td></tr>'; row++;
+  html += '<tr><td class="wrap" colspan="4">' + escapeHtml(sheet.notes || '') + '</td></tr>'; row++;
+  html += '<tr><td class="label" colspan="2">Authorized Signature</td><td class="label" colspan="2">Printed Name / Date</td></tr>'; row++;
+  html += '<tr><td class="signature" colspan="2">' + (sheet.signature_data ? '<img src="' + sheet.signature_data + '" alt="Signature">' : '') + '</td><td class="signature" colspan="2"></td></tr>'; row++;
+  html += '</table></body></html>';
+  return html;
 }
 function excelFileName(sheet) {
   var baseName = ['TM', sheet.sheet_number || 'sheet', sheet.work_date || ''].join('-').replace(/[^a-z0-9-]+/gi, '-').replace(/-+/g, '-');
@@ -510,7 +497,7 @@ function formattedSheetHtml(sheet) {
   }).join('') || '<tr><td colspan="2">No equipment or other costs listed.</td></tr>';
   var signature = sheet.signature_data ? '<img class="signature-image" src="' + sheet.signature_data + '" alt="Signature">' : '<div class="signature-line"></div>';
   return '<!doctype html><html><head><meta charset="utf-8"><title>T&M Sheet</title><style>' +
-    'body{margin:0;background:#e9eeec;font-family:Arial,sans-serif;color:#111} .sheet{width:8.5in;min-height:11in;margin:20px auto;background:#fff;padding:.35in;box-shadow:0 12px 36px rgba(0,0,0,.18)} .head{display:grid;grid-template-columns:110px 1fr;gap:18px;align-items:center;border-bottom:4px solid #111;padding-bottom:14px} .logo{max-width:105px;max-height:90px;object-fit:contain}.title h1{margin:0;font-size:30px;letter-spacing:.5px}.title p{margin:5px 0 0;font-weight:700;color:#1d6f5f;text-transform:uppercase}.meta{display:grid;grid-template-columns:repeat(4,1fr);border:2px solid #111;margin-top:16px}.box{border-right:1px solid #111;padding:8px;min-height:48px}.box:last-child{border-right:0}.label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:5px}.value{font-size:15px;font-weight:700}.section{margin-top:16px}.section h2{font-size:16px;margin:0;background:#111;color:#fff;padding:8px 10px;text-transform:uppercase;letter-spacing:.3px}.textblock{border:1px solid #111;border-top:0;min-height:78px;padding:10px;line-height:1.35}table{width:100%;border-collapse:collapse;border:1px solid #111;border-top:0}th,td{border:1px solid #111;padding:8px;text-align:left;vertical-align:top}th{background:#f1f3f2;text-transform:uppercase;font-size:12px}.num{text-align:right}.totals{margin-left:auto;margin-top:14px;width:330px;border:2px solid #111}.total-row{display:flex;justify-content:space-between;border-bottom:1px solid #111;padding:8px 10px}.total-row:last-child{border-bottom:0;background:#f1f3f2;font-size:18px;font-weight:800}.signature-wrap{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:22px}.signature-box{border:1px solid #111;min-height:105px;padding:8px}.signature-line{height:62px;border-bottom:2px solid #111;margin-top:14px}.signature-image{max-width:100%;max-height:75px;display:block}.footer{margin-top:16px;font-size:11px;color:#555}@media print{body{background:#fff}.sheet{margin:0;box-shadow:none;width:auto;min-height:auto}.no-print{display:none}}' +
+    'body{margin:0;background:#e9eeec;font-family:Arial,sans-serif;color:#111} .sheet{width:8.5in;min-height:11in;margin:20px auto;background:#fff;padding:.35in;box-shadow:0 12px 36px rgba(0,0,0,.18)} .head{display:grid;grid-template-columns:110px 1fr;gap:18px;align-items:center;border-bottom:4px solid #111;padding-bottom:14px} .logo{max-width:105px;max-height:90px;object-fit:contain}.title h1{margin:0;font-size:30px;letter-spacing:.5px}.title p{margin:5px 0 0;font-weight:700;color:#1d6f5f;text-transform:uppercase}.meta{display:grid;grid-template-columns:repeat(4,1fr);border:2px solid #111;margin-top:16px}.box{border-right:1px solid #111;padding:8px;min-height:48px}.box:last-child{border-right:0}.label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:5px}.value{font-size:15px;font-weight:700}.section{margin-top:24px}.section h2{font-size:16px;margin:0;background:#111;color:#fff;padding:8px 10px;text-transform:uppercase;letter-spacing:.3px}.textblock{border:1px solid #111;border-top:0;min-height:78px;padding:10px;line-height:1.35}table{width:100%;border-collapse:collapse;border:1px solid #111;border-top:0}th,td{border:1px solid #111;padding:8px;text-align:left;vertical-align:top}th{background:#f1f3f2;text-transform:uppercase;font-size:12px}.num{text-align:right}.totals{margin-left:auto;margin-top:24px;width:330px;border:2px solid #111}.total-row{display:flex;justify-content:space-between;border-bottom:1px solid #111;padding:8px 10px}.total-row:last-child{border-bottom:0;background:#f1f3f2;font-size:18px;font-weight:800}.signature-wrap{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:28px}.signature-box{border:1px solid #111;min-height:105px;padding:8px}.signature-line{height:62px;border-bottom:2px solid #111;margin-top:14px}.signature-image{max-width:100%;max-height:75px;display:block}.footer{margin-top:16px;font-size:11px;color:#555}@media print{body{background:#fff}.sheet{margin:0;box-shadow:none;width:auto;min-height:auto}.no-print{display:none}}' +
     '</style></head><body><div class="sheet"><header class="head"><img class="logo" src="logo.png" alt="Logo"><div class="title"><p>Time and Material Sheet</p><h1>' + escapeHtml(sheet.project || 'T&M Work') + '</h1></div></header>' +
     '<section class="meta"><div class="box"><span class="label">Date</span><span class="value">' + escapeHtml(sheet.work_date || '') + '</span></div><div class="box"><span class="label">Job Number</span><span class="value">' + escapeHtml(sheet.sheet_number || '') + '</span></div><div class="box"><span class="label">Requested By</span><span class="value">' + escapeHtml(sheet.requested_by || '') + '</span></div><div class="box"><span class="label">Location</span><span class="value">' + escapeHtml(sheet.location || '') + '</span></div></section>' +
     '<section class="section"><h2>Work Performed</h2><div class="textblock">' + escapeHtml(sheet.work_performed || '') + '</div></section>' +
@@ -596,4 +583,3 @@ document.addEventListener("click", function(event) {
   if (target.matches("[data-mark-sent]")) markSent(target.dataset.markSent);
   if (target.matches("[data-delete]")) deleteSheet(target.dataset.delete);
 });
-loadData();
