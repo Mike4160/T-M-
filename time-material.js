@@ -216,7 +216,29 @@ function addMaterialRow(item) {
   updateMaterialRowTotal(row);
   $("#materialList").appendChild(row);
 }
+function ensureMaterialSection() {
+  if ($("#materialList")) return;
+  var oldMaterials = $("#materials");
+  var oldMaterialCost = $("#materialCost");
+  var section = document.createElement("section");
+  section.className = "material-section";
+  section.innerHTML = '<div class="mini-toolbar"><h3>Material Used</h3><button class="btn" id="addMaterial" type="button">Add Material</button></div><div class="material-list" id="materialList"></div>';
+  var insertBefore = document.querySelector(".equipment-section") || (oldMaterialCost ? oldMaterialCost.closest("label") : null);
+  if (insertBefore && insertBefore.parentNode) insertBefore.parentNode.insertBefore(section, insertBefore);
+  else if (oldMaterials && oldMaterials.closest("label")) oldMaterials.closest("label").after(section);
+  if (oldMaterials) {
+    addMaterialRow({ description: oldMaterials.value || "", amount: oldMaterialCost && Number(oldMaterialCost.value || 0) ? 1 : "", unit_price: oldMaterialCost ? oldMaterialCost.value : "" });
+    oldMaterials.closest("label").hidden = true;
+  }
+  if (oldMaterialCost) oldMaterialCost.closest("label").hidden = true;
+  var addButton = $("#addMaterial");
+  if (addButton && !addButton.dataset.bound) {
+    addButton.dataset.bound = "true";
+    addButton.addEventListener("click", function() { addMaterialRow(); });
+  }
+}
 function resetMaterials() {
+  ensureMaterialSection();
   $("#materialList").innerHTML = "";
   addMaterialRow();
 }
@@ -535,12 +557,14 @@ function exportCsv() {
   URL.revokeObjectURL(link.href);
 }
 $("#workDate").value = new Date().toISOString().slice(0, 10);
+ensureMaterialSection();
 setupSignaturePad();
 resetEmployees();
 resetMaterials();
 resetEquipment();
 $("#addEmployee").addEventListener("click", function() { addEmployeeRow(); });
-$("#addMaterial").addEventListener("click", function() { addMaterialRow(); });
+var addMaterialButton = $("#addMaterial");
+if (addMaterialButton) { addMaterialButton.dataset.bound = "true"; addMaterialButton.addEventListener("click", function() { addMaterialRow(); }); }
 $("#addEquipment").addEventListener("click", function() { addEquipmentRow(); });
 $("#tmForm").addEventListener("submit", addSheet);
 $("#search").addEventListener("input", render);
