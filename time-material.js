@@ -96,6 +96,24 @@ function employeeEmailLines(sheet) {
     return "- " + (employee.name || "Employee") + ": " + (employee.hours || 0) + " hrs @ " + money(employee.rate || 0) + " = " + money(Number(employee.hours || 0) * Number(employee.rate || 0));
   });
 }
+function getMaterialItems(sheet) {
+  if (Array.isArray(sheet.material_items)) return sheet.material_items;
+  if (typeof sheet.material_items === "string" && sheet.material_items.trim()) {
+    try { var parsed = JSON.parse(sheet.material_items); if (Array.isArray(parsed)) return parsed; } catch (error) {}
+  }
+  if (sheet.materials || sheet.material_cost) return [{ description: sheet.materials || "Material", amount: 1, unit_price: Number(sheet.material_cost || 0), cost: Number(sheet.material_cost || 0) }];
+  return [];
+}
+function materialLineTotal(item) { return Number(item.cost != null ? item.cost : (Number(item.amount || 0) * Number(item.unit_price || 0))); }
+function materialTotal(sheet) { return getMaterialItems(sheet).reduce(function(total, item) { return total + materialLineTotal(item); }, 0); }
+function materialDescriptions(sheet) { return getMaterialItems(sheet).map(function(item) { return item.description; }).filter(Boolean).join("\n"); }
+function materialEmailLines(sheet) {
+  var items = getMaterialItems(sheet);
+  if (!items.length) return ["None"];
+  return items.map(function(item) {
+    return "- " + (item.description || "Material") + ": " + (item.amount || 0) + " @ " + money(item.unit_price || 0) + " = " + money(materialLineTotal(item));
+  });
+}
 function getEquipmentItems(sheet) {
   if (Array.isArray(sheet.equipment_items)) return sheet.equipment_items;
   if (typeof sheet.equipment_items === "string" && sheet.equipment_items.trim()) {
@@ -110,7 +128,7 @@ function equipmentEmailLines(sheet) {
   if (!items.length) return ["None"];
   return items.map(function(item) { return "- " + (item.description || "Equipment / Other") + ": " + money(item.cost || 0); });
 }
-function sheetTotal(sheet) { return employeeLaborTotal(sheet) + Number(sheet.material_cost || 0) + equipmentTotal(sheet); }
+function sheetTotal(sheet) { return employeeLaborTotal(sheet) + materialTotal(sheet) + equipmentTotal(sheet); }
 function emailFor(sheet) {
   var subject = "T&M Sheet" + (sheet.sheet_number ? " " + sheet.sheet_number : "") + " - " + (sheet.project || "Project");
   var body = [
@@ -133,8 +151,8 @@ function emailFor(sheet) {
     "Labor Total: " + money(employeeLaborTotal(sheet)),
     "",
     "Materials Used:",
-    sheet.materials || "N/A",
-    "Material Cost: " + money(sheet.material_cost),
+    materialEmailLines(sheet).join("\n"),
+    "Material Total: " + money(materialTotal(sheet)),
     "",
     "Equipment / Other:",
     equipmentEmailLines(sheet).join("\n"),
@@ -168,6 +186,39 @@ function readEmployees() {
       rate: Number(row.querySelector("[data-employee-rate]").value || 0)
     };
   }).filter(function(employee) { return employee.name || employee.hours || employee.rate; });
+}
+function materialRows() { return Array.from(document.querySelectorAll(".material-row")); }
+function readMaterialItems() {
+  return materialRows().map(function(row) {
+    var amount = Number(row.querySelector("[data-material-amount]").value || 0);
+    var unitPrice = Number(row.querySelector("[data-material-unit-price]").value || 0);
+    return {
+      description: row.querySelector("[data-material-description]").value.trim(),
+      amount: amount,
+      unit_price: unitPrice,
+      cost: amount * unitPrice
+    };
+  }).filter(function(item) { return item.description || item.amount || item.unit_price || item.cost; });
+}
+function updateMaterialRowTotal(row) {
+  var amount = Number(row.querySelector("[data-material-amount]").value || 0);
+  var unitPrice = Number(row.querySelector("[data-material-unit-price]").value || 0);
+  row.querySelector("[data-material-total]").value = (amount * unitPrice).toFixed(2);
+}
+function addMaterialRow(item) {
+  item = item || {};
+  var row = document.createElement("div");
+  row.className = "material-row";
+  row.innerHTML = '<label>Material<input data-material-description placeholder="Wire, conduit, fittings, etc."></label><label>Amount Used<input data-material-amount type="number" min="0" step="0.01" placeholder="0.00"></label><label>Unit Price<input data-material-unit-price type="number" min="0" step="0.01" placeholder="0.00"></label><label>Total<input data-material-total type="number" readonly placeholder="0.00"></label><button class="btn icon-btn" data-remove-material type="button">x</button>';
+  row.querySelector("[data-material-description]").value = item.description || "";
+  row.querySelector("[data-material-amount]").value = item.amount || "";
+  row.querySelector("[data-material-unit-price]").value = item.unit_price != null ? item.unit_price : (item.amount ? Number(item.cost || 0) / Number(item.amount || 1) : item.cost || "");
+  updateMaterialRowTotal(row);
+  $("#materialList").appendChild(row);
+}
+function resetMaterials() {
+  $("#materialList").innerHTML = "";
+  addMaterialRow();
 }
 function equipmentRows() { return Array.from(document.querySelectorAll(".equipment-row")); }
 function readEquipmentItems() {
@@ -207,6 +258,8 @@ function resetEmployees() {
 }
 function readForm() {
   var employees = readEmployees();
+  var materialItems = readMaterialItems();
+  var materialCost = materialItems.reduce(function(total, item) { return total + Number(item.cost || 0); }, 0);
   var equipmentItems = readEquipmentItems();
   var equipmentCost = equipmentItems.reduce(function(total, item) { return total + Number(item.cost || 0); }, 0);
   var totalHours = employees.reduce(function(total, employee) { return total + Number(employee.hours || 0); }, 0);
@@ -224,8 +277,9 @@ function readForm() {
     employees: employees,
     labor_hours: totalHours,
     labor_rate: totalHours ? laborTotal / totalHours : 0,
-    materials: $("#materials").value.trim(),
-    material_cost: numberValue("#materialCost"),
+    materials: materialItems.map(function(item) { return item.description; }).filter(Boolean).join("\n"),
+    material_items: materialItems,
+    material_cost: materialCost,
     equipment_items: equipmentItems,
     other_cost: equipmentCost,
     send_to: $("#sendTo").value.trim(),
@@ -253,6 +307,7 @@ async function addSheet(event) {
   $("#project").value = "";
   $("#workDate").value = new Date().toISOString().slice(0, 10);
   resetEmployees();
+  resetMaterials();
   resetEquipment();
   clearSignature();
   await loadData();
@@ -305,17 +360,129 @@ function render() {
     var email = emailFor(sheet);
     var statusClass = sheet.email_sent ? "sent" : "ready";
     var statusText = sheet.email_sent ? "Sent" : "Draft Ready";
-    return '<tr><td>' + esc(sheet.work_date) + '</td><td><strong>' + esc(sheet.sheet_number || "Job") + '</strong><br><span class="muted">' + esc(sheet.project || "") + '</span></td><td class="work-text">' + esc(sheet.work_performed) + '<br><span class="muted">' + esc(sheet.location || "") + '</span></td><td>' + esc(employeeHoursTotal(sheet)) + '<br><span class="muted">' + esc(employeeNames(sheet) || sheet.crew || '') + '</span></td><td>' + money(sheetTotal(sheet)) + '</td><td><span class="badge ' + statusClass + '">' + statusText + '</span></td><td><div class="row"><a class="btn primary" href="' + email.href + '">Open Draft</a><button class="btn" type="button" data-print-sheet="' + esc(sheet.id) + '">Print Sheet</button><button class="btn" type="button" data-download-sheet="' + esc(sheet.id) + '">Download Sheet</button><button class="btn" type="button" data-preview="' + esc(sheet.id) + '">Preview</button><button class="btn" type="button" data-mark-sent="' + esc(sheet.id) + '">Mark Sent</button><button class="btn danger" type="button" data-delete="' + esc(sheet.id) + '">Delete</button></div></td></tr>';
+    return '<tr><td>' + esc(sheet.work_date) + '</td><td><strong>' + esc(sheet.sheet_number || "Job") + '</strong><br><span class="muted">' + esc(sheet.project || "") + '</span></td><td class="work-text">' + esc(sheet.work_performed) + '<br><span class="muted">' + esc(sheet.location || "") + '</span></td><td>' + esc(employeeHoursTotal(sheet)) + '<br><span class="muted">' + esc(employeeNames(sheet) || sheet.crew || '') + '</span></td><td>' + money(sheetTotal(sheet)) + '</td><td><span class="badge ' + statusClass + '">' + statusText + '</span></td><td><div class="row"><a class="btn primary" href="' + email.href + '">Open Draft</a><button class="btn" type="button" data-print-sheet="' + esc(sheet.id) + '">Print Sheet</button><button class="btn" type="button" data-download-sheet="' + esc(sheet.id) + '">Download Word</button><button class="btn" type="button" data-download-excel="' + esc(sheet.id) + '">Download Excel</button><button class="btn" type="button" data-preview="' + esc(sheet.id) + '">Preview</button><button class="btn" type="button" data-mark-sent="' + esc(sheet.id) + '">Mark Sent</button><button class="btn danger" type="button" data-delete="' + esc(sheet.id) + '">Delete</button></div></td></tr>';
   }).join("") || '<tr><td colspan="7">No T&M sheets logged yet.</td></tr>';
+}
+
+
+function xmlEscape(value) {
+  return String(value == null ? '' : value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+}
+function excelCell(value, type, style, formula) {
+  type = type || (typeof value === 'number' ? 'Number' : 'String');
+  var attrs = style ? ' ss:StyleID="' + style + '"' : '';
+  if (formula) attrs += ' ss:Formula="' + xmlEscape(formula) + '"';
+  return '<Cell' + attrs + '><Data ss:Type="' + type + '">' + xmlEscape(value == null ? '' : value) + '</Data></Cell>';
+}
+function excelEmpty(count) {
+  var out = '';
+  for (var i = 0; i < count; i++) out += '<Cell/>';
+  return out;
+}
+function excelRow(cells) { return '<Row>' + cells.join('') + '</Row>'; }
+function excelSheetXml(sheet) {
+  var employees = getEmployees(sheet);
+  var equipment = getEquipmentItems(sheet);
+  var materials = getMaterialItems(sheet);
+  var rows = [];
+  rows.push(excelRow([excelCell('TIME AND MATERIAL SHEET', 'String', 'Title'), excelEmpty(3)]));
+  rows.push(excelRow([excelCell('Project', 'String', 'Label'), excelCell(sheet.project || '', 'String', 'Value'), excelCell('Job Number', 'String', 'Label'), excelCell(sheet.sheet_number || '', 'String', 'Value')]));
+  rows.push(excelRow([excelCell('Date', 'String', 'Label'), excelCell(sheet.work_date || '', 'String', 'Value'), excelCell('Requested By', 'String', 'Label'), excelCell(sheet.requested_by || '', 'String', 'Value')]));
+  rows.push(excelRow([excelCell('Location', 'String', 'Label'), excelCell(sheet.location || '', 'String', 'Value'), excelCell('Signed', 'String', 'Label'), excelCell(sheet.signature_data ? 'Yes' : 'No', 'String', 'Value')]));
+  rows.push(excelRow([excelCell('Work Performed', 'String', 'Header'), excelEmpty(3)]));
+  rows.push(excelRow([excelCell(sheet.work_performed || '', 'String', 'Wrap'), excelEmpty(3)]));
+  rows.push(excelRow([excelCell('Employees', 'String', 'Header'), excelEmpty(3)]));
+  rows.push(excelRow([excelCell('Name', 'String', 'TableHead'), excelCell('Hours', 'String', 'TableHead'), excelCell('Rate', 'String', 'TableHead'), excelCell('Total', 'String', 'TableHead')]));
+  var employeeStart = rows.length + 1;
+  if (employees.length) {
+    employees.forEach(function(employee) {
+      rows.push(excelRow([
+        excelCell(employee.name || '', 'String'),
+        excelCell(Number(employee.hours || 0), 'Number', 'Number'),
+        excelCell(Number(employee.rate || 0), 'Number', 'Currency'),
+        excelCell('', 'Number', 'Currency', '=RC[-2]*RC[-1]')
+      ]));
+    });
+  } else {
+    rows.push(excelRow([excelCell('', 'String'), excelCell(0, 'Number', 'Number'), excelCell(0, 'Number', 'Currency'), excelCell('', 'Number', 'Currency', '=RC[-2]*RC[-1]')]));
+  }
+  var employeeEnd = rows.length;
+  rows.push(excelRow([excelCell('Labor Total', 'String', 'TotalLabel'), excelEmpty(2), excelCell('', 'Number', 'TotalCurrency', '=SUM(R' + employeeStart + 'C4:R' + employeeEnd + 'C4)')]));
+  rows.push(excelRow([excelCell('Material Used', 'String', 'Header'), excelEmpty(3)]));
+  rows.push(excelRow([excelCell('Material', 'String', 'TableHead'), excelCell('Amount Used', 'String', 'TableHead'), excelCell('Unit Price', 'String', 'TableHead'), excelCell('Total', 'String', 'TableHead')]));
+  var materialStart = rows.length + 1;
+  if (materials.length) {
+    materials.forEach(function(item) {
+      rows.push(excelRow([excelCell(item.description || '', 'String'), excelCell(Number(item.amount || 0), 'Number', 'Number'), excelCell(Number(item.unit_price || 0), 'Number', 'Currency'), excelCell('', 'Number', 'Currency', '=RC[-2]*RC[-1]')]));
+    });
+  } else {
+    rows.push(excelRow([excelCell('', 'String'), excelCell(0, 'Number', 'Number'), excelCell(0, 'Number', 'Currency'), excelCell('', 'Number', 'Currency', '=RC[-2]*RC[-1]')]));
+  }
+  var materialEnd = rows.length;
+  rows.push(excelRow([excelCell('Material Total', 'String', 'TotalLabel'), excelEmpty(2), excelCell('', 'Number', 'TotalCurrency', '=SUM(R' + materialStart + 'C4:R' + materialEnd + 'C4)')]));
+  rows.push(excelRow([excelCell('Equipment / Other', 'String', 'Header'), excelEmpty(3)]));
+  rows.push(excelRow([excelCell('Description', 'String', 'TableHead'), excelEmpty(2), excelCell('Cost', 'String', 'TableHead')]));
+  var equipmentStart = rows.length + 1;
+  if (equipment.length) {
+    equipment.forEach(function(item) {
+      rows.push(excelRow([excelCell(item.description || '', 'String'), excelEmpty(2), excelCell(Number(item.cost || 0), 'Number', 'Currency')]));
+    });
+  } else {
+    rows.push(excelRow([excelCell('', 'String'), excelEmpty(2), excelCell(0, 'Number', 'Currency')]));
+  }
+  var equipmentEnd = rows.length;
+  rows.push(excelRow([excelCell('Equipment / Other Total', 'String', 'TotalLabel'), excelEmpty(2), excelCell('', 'Number', 'TotalCurrency', '=SUM(R' + equipmentStart + 'C4:R' + equipmentEnd + 'C4)')]));
+  var laborTotalRow = employeeEnd + 1;
+  var materialTotalRow = laborTotalRow + 2 + (materials.length || 1);
+  var equipmentTotalRow = rows.length;
+  rows.push(excelRow([excelCell('Grand Total', 'String', 'GrandLabel'), excelEmpty(2), excelCell('', 'Number', 'GrandCurrency', '=R' + laborTotalRow + 'C4+R' + materialTotalRow + 'C4+R' + equipmentTotalRow + 'C4')]));
+  rows.push(excelRow([excelCell('Notes', 'String', 'Header'), excelEmpty(3)]));
+  rows.push(excelRow([excelCell(sheet.notes || '', 'String', 'Wrap'), excelEmpty(3)]));
+  rows.push(excelRow([excelCell('Authorized Signature', 'String', 'Label'), excelCell(sheet.signature_data ? 'Signed on file' : '', 'String', 'Value'), excelCell('Printed Name / Date', 'String', 'Label'), excelCell('', 'String', 'Value')]));
+  return '<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>' +
+    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">' +
+    '<Styles><Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Top"/><Font ss:FontName="Arial" ss:Size="10"/></Style>' +
+    '<Style ss:ID="Title"><Font ss:Bold="1" ss:Size="18"/><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/></Style>' +
+    '<Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#111111" ss:Pattern="Solid"/></Style>' +
+    '<Style ss:ID="TableHead"><Font ss:Bold="1"/><Interior ss:Color="#E9EEEC" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>' +
+    '<Style ss:ID="Label"><Font ss:Bold="1" ss:Color="#555555"/><Interior ss:Color="#F4F6F5" ss:Pattern="Solid"/></Style>' +
+    '<Style ss:ID="Value"><Font ss:Bold="1"/></Style>' +
+    '<Style ss:ID="Wrap"><Alignment ss:WrapText="1" ss:Vertical="Top"/></Style>' +
+    '<Style ss:ID="Number"><NumberFormat ss:Format="0.00"/></Style>' +
+    '<Style ss:ID="Currency"><NumberFormat ss:Format="$#,##0.00"/></Style>' +
+    '<Style ss:ID="TotalLabel"><Font ss:Bold="1"/><Interior ss:Color="#F4F6F5" ss:Pattern="Solid"/></Style>' +
+    '<Style ss:ID="TotalCurrency"><Font ss:Bold="1"/><NumberFormat ss:Format="$#,##0.00"/><Interior ss:Color="#F4F6F5" ss:Pattern="Solid"/></Style>' +
+    '<Style ss:ID="GrandLabel"><Font ss:Bold="1" ss:Size="12"/><Interior ss:Color="#DCE4E1" ss:Pattern="Solid"/></Style>' +
+    '<Style ss:ID="GrandCurrency"><Font ss:Bold="1" ss:Size="12"/><NumberFormat ss:Format="$#,##0.00"/><Interior ss:Color="#DCE4E1" ss:Pattern="Solid"/></Style></Styles>' +
+    '<Worksheet ss:Name="T&M Sheet"><Table ss:ExpandedColumnCount="4" ss:ExpandedRowCount="' + rows.length + '" x:FullColumns="1" x:FullRows="1">' +
+    '<Column ss:Width="220"/><Column ss:Width="90"/><Column ss:Width="90"/><Column ss:Width="110"/>' + rows.join('') + '</Table></Worksheet></Workbook>';
+}
+function excelFileName(sheet) {
+  var baseName = ['TM', sheet.sheet_number || 'sheet', sheet.work_date || ''].join('-').replace(/[^a-z0-9-]+/gi, '-').replace(/-+/g, '-');
+  return baseName + '.xls';
+}
+function downloadExcelSheet(id) {
+  var sheet = tmState.sheets.find(function(item) { return String(item.id) === String(id); });
+  if (!sheet) return;
+  var blob = new Blob([excelSheetXml(sheet)], { type: 'application/vnd.ms-excel' });
+  var link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = excelFileName(sheet);
+  link.click();
+  URL.revokeObjectURL(link.href);
 }
 
 function formattedSheetHtml(sheet) {
   var employees = getEmployees(sheet);
   var equipment = getEquipmentItems(sheet);
+  var materials = getMaterialItems(sheet);
   var employeeRows = employees.map(function(employee) {
     var lineTotal = Number(employee.hours || 0) * Number(employee.rate || 0);
     return '<tr><td>' + escapeHtml(employee.name || '') + '</td><td class="num">' + escapeHtml(employee.hours || 0) + '</td><td class="num">' + money(employee.rate || 0) + '</td><td class="num">' + money(lineTotal) + '</td></tr>';
   }).join('') || '<tr><td colspan="4">No employees listed.</td></tr>';
+  var materialRows = materials.map(function(item) {
+    return '<tr><td>' + escapeHtml(item.description || '') + '</td><td class="num">' + escapeHtml(item.amount || 0) + '</td><td class="num">' + money(item.unit_price || 0) + '</td><td class="num">' + money(materialLineTotal(item)) + '</td></tr>';
+  }).join('') || '<tr><td colspan="4">No materials listed.</td></tr>';
   var equipmentRows = equipment.map(function(item) {
     return '<tr><td>' + escapeHtml(item.description || '') + '</td><td class="num">' + money(item.cost || 0) + '</td></tr>';
   }).join('') || '<tr><td colspan="2">No equipment or other costs listed.</td></tr>';
@@ -326,9 +493,9 @@ function formattedSheetHtml(sheet) {
     '<section class="meta"><div class="box"><span class="label">Date</span><span class="value">' + escapeHtml(sheet.work_date || '') + '</span></div><div class="box"><span class="label">Job Number</span><span class="value">' + escapeHtml(sheet.sheet_number || '') + '</span></div><div class="box"><span class="label">Requested By</span><span class="value">' + escapeHtml(sheet.requested_by || '') + '</span></div><div class="box"><span class="label">Location</span><span class="value">' + escapeHtml(sheet.location || '') + '</span></div></section>' +
     '<section class="section"><h2>Work Performed</h2><div class="textblock">' + escapeHtml(sheet.work_performed || '') + '</div></section>' +
     '<section class="section"><h2>Employees</h2><table><thead><tr><th>Name</th><th class="num">Hours</th><th class="num">Rate</th><th class="num">Total</th></tr></thead><tbody>' + employeeRows + '</tbody></table></section>' +
-    '<section class="section"><h2>Material Used</h2><div class="textblock">' + escapeHtml(sheet.materials || '') + '</div></section>' +
+    '<section class="section"><h2>Material Used</h2><table><thead><tr><th>Material</th><th class="num">Amount Used</th><th class="num">Unit Price</th><th class="num">Total</th></tr></thead><tbody>' + materialRows + '</tbody></table></section>' +
     '<section class="section"><h2>Equipment / Other</h2><table><thead><tr><th>Description</th><th class="num">Cost</th></tr></thead><tbody>' + equipmentRows + '</tbody></table></section>' +
-    '<div class="totals"><div class="total-row"><span>Labor Total</span><strong>' + money(employeeLaborTotal(sheet)) + '</strong></div><div class="total-row"><span>Material Cost</span><strong>' + money(sheet.material_cost || 0) + '</strong></div><div class="total-row"><span>Equipment / Other</span><strong>' + money(equipmentTotal(sheet)) + '</strong></div><div class="total-row"><span>Total</span><strong>' + money(sheetTotal(sheet)) + '</strong></div></div>' +
+    '<div class="totals"><div class="total-row"><span>Labor Total</span><strong>' + money(employeeLaborTotal(sheet)) + '</strong></div><div class="total-row"><span>Material Total</span><strong>' + money(materialTotal(sheet)) + '</strong></div><div class="total-row"><span>Equipment / Other</span><strong>' + money(equipmentTotal(sheet)) + '</strong></div><div class="total-row"><span>Total</span><strong>' + money(sheetTotal(sheet)) + '</strong></div></div>' +
     '<section class="section"><h2>Notes</h2><div class="textblock">' + escapeHtml(sheet.notes || '') + '</div></section>' +
     '<section class="signature-wrap"><div class="signature-box"><span class="label">Authorized Signature</span>' + signature + '</div><div class="signature-box"><span class="label">Printed Name / Date</span><div class="signature-line"></div></div></section>' +
     '<p class="footer">Generated from the T&M Sheet Sender.</p><p class="no-print"><button onclick="window.print()">Print / Save as PDF</button></p></div></body></html>';
@@ -359,7 +526,7 @@ function printSheet(id) {
 
 function exportCsv() {
   var headers = ["Date", "Job Number", "Project", "Requested By", "Location", "Work Performed", "Employees", "Labor Hours", "Labor Total", "Materials", "Material Cost", "Equipment / Other", "Equipment / Other Total", "Send To", "Notes", "Signed", "Email Sent"];
-  var rows = tmState.sheets.map(function(sheet) { return [sheet.work_date, sheet.sheet_number, sheet.project, sheet.requested_by, sheet.location, sheet.work_performed, employeeEmailLines(sheet).join("; "), employeeHoursTotal(sheet), employeeLaborTotal(sheet), sheet.materials, sheet.material_cost, equipmentEmailLines(sheet).join("; "), equipmentTotal(sheet), sheet.send_to, sheet.notes, sheet.signature_data ? "Yes" : "No", sheet.email_sent ? "Yes" : "No"]; });
+  var rows = tmState.sheets.map(function(sheet) { return [sheet.work_date, sheet.sheet_number, sheet.project, sheet.requested_by, sheet.location, sheet.work_performed, employeeEmailLines(sheet).join("; "), employeeHoursTotal(sheet), employeeLaborTotal(sheet), materialEmailLines(sheet).join("; "), materialTotal(sheet), equipmentEmailLines(sheet).join("; "), equipmentTotal(sheet), sheet.send_to, sheet.notes, sheet.signature_data ? "Yes" : "No", sheet.email_sent ? "Yes" : "No"]; });
   var csv = [headers].concat(rows).map(function(row) { return row.map(function(value) { return '"' + String(value == null ? "" : value).replaceAll('"', '""') + '"'; }).join(","); }).join("\n");
   var link = document.createElement("a");
   link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
@@ -370,23 +537,33 @@ function exportCsv() {
 $("#workDate").value = new Date().toISOString().slice(0, 10);
 setupSignaturePad();
 resetEmployees();
+resetMaterials();
 resetEquipment();
 $("#addEmployee").addEventListener("click", function() { addEmployeeRow(); });
+$("#addMaterial").addEventListener("click", function() { addMaterialRow(); });
 $("#addEquipment").addEventListener("click", function() { addEquipmentRow(); });
 $("#tmForm").addEventListener("submit", addSheet);
 $("#search").addEventListener("input", render);
 $("#exportCsv").addEventListener("click", exportCsv);
 $("#clearSignature").addEventListener("click", clearSignature);
 $("#markPreviewSent").addEventListener("click", function() { if (tmState.activeSheetId) markSent(tmState.activeSheetId); });
+document.addEventListener("input", function(event) {
+  var target = event.target;
+  if (target.matches("[data-material-amount], [data-material-unit-price]")) updateMaterialRowTotal(target.closest(".material-row"));
+});
 document.addEventListener("click", function(event) {
   var target = event.target;
   if (target.matches("[data-remove-employee]")) {
     if (employeeRows().length > 1) target.closest(".employee-row").remove();
   }
+  if (target.matches("[data-remove-material]")) {
+    if (materialRows().length > 1) target.closest(".material-row").remove();
+  }
   if (target.matches("[data-remove-equipment]")) {
     if (equipmentRows().length > 1) target.closest(".equipment-row").remove();
   }
   if (target.matches("[data-download-sheet]")) downloadSheet(target.dataset.downloadSheet);
+  if (target.matches("[data-download-excel]")) downloadExcelSheet(target.dataset.downloadExcel);
   if (target.matches("[data-print-sheet]")) printSheet(target.dataset.printSheet);
   if (target.matches("[data-preview]")) {
     var sheet = tmState.sheets.find(function(item) { return String(item.id) === String(target.dataset.preview); });
