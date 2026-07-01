@@ -77,7 +77,22 @@ function signatureData() {
   if (!canvas || signatureIsEmpty) return "";
   return canvas.toDataURL("image/png");
 }
-function configured() { return window.MATERIAL_APP_SUPABASE_URL && !window.MATERIAL_APP_SUPABASE_URL.includes("PASTE_") && window.MATERIAL_APP_SUPABASE_ANON_KEY && !window.MATERIAL_APP_SUPABASE_ANON_KEY.includes("PASTE_") && window.supabase; }
+function configured() { return window.MATERIAL_APP_SUPABASE_URL && !window.MATERIAL_APP_SUPABASE_URL.includes("PASTE_") && window.MATERIAL_APP_SUPABASE_ANON_KEY && !window.MATERIAL_APP_SUPABASE_ANON_KEY.includes("PASTE_"); }
+function supabaseHeaders(extra) {
+  return Object.assign({
+    apikey: window.MATERIAL_APP_SUPABASE_ANON_KEY,
+    Authorization: "Bearer " + window.MATERIAL_APP_SUPABASE_ANON_KEY,
+    "Content-Type": "application/json",
+    Prefer: "return=representation"
+  }, extra || {});
+}
+async function supabaseRequest(path, options) {
+  var response = await fetch(window.MATERIAL_APP_SUPABASE_URL + "/rest/v1/" + path, Object.assign({ headers: supabaseHeaders() }, options || {}));
+  var text = await response.text();
+  var data = text ? JSON.parse(text) : null;
+  if (!response.ok) throw new Error(data && data.message ? data.message : text || response.statusText);
+  return data;
+}
 function getEmployees(sheet) {
   if (Array.isArray(sheet.employees)) return sheet.employees;
   if (typeof sheet.employees === "string" && sheet.employees.trim()) {
@@ -168,9 +183,17 @@ function localLoad() { try { tmState.sheets = JSON.parse(localStorage.getItem(st
 function localSave() { localStorage.setItem(storageKey, JSON.stringify(tmState.sheets)); }
 async function loadData() {
   if (configured()) {
-    supabaseClient = window.supabase.createClient(window.MATERIAL_APP_SUPABASE_URL, window.MATERIAL_APP_SUPABASE_ANON_KEY);
-    var result = await supabaseClient.from("time_material_sheets").select("*").order("created_at", { ascending: false });
-    if (!result.error) { tmState.useSupabase = true; tmState.sheets = result.data || []; $("#setupWarning").hidden = true; render(); return; }
+    try {
+      var data = await supabaseRequest("time_material_sheets?select=*&order=created_at.desc");
+      tmState.useSupabase = true;
+      tmState.sheets = data || [];
+      $("#setupWarning").hidden = true;
+      render();
+      return;
+    } catch (error) {
+      console.error("Supabase load failed", error);
+      $("#setupWarning").textContent = "Supabase error: " + error.message + ". Sheets are saved in this browser until this is fixed.";
+    }
   }
   tmState.useSupabase = false;
   $("#setupWarning").hidden = false;
@@ -318,9 +341,8 @@ async function addSheet(event) {
   if (tmState.useSupabase) {
     var payload = Object.assign({}, sheet);
     delete payload.id;
-    var result = await supabaseClient.from("time_material_sheets").insert(payload).select().single();
-    if (result.error) return alert(result.error.message);
-    saved = result.data;
+    var inserted = await supabaseRequest("time_material_sheets", { method: "POST", body: JSON.stringify(payload) });
+    saved = Array.isArray(inserted) ? inserted[0] : inserted;
   } else {
     tmState.sheets.unshift(sheet);
     localSave();
@@ -337,8 +359,7 @@ async function addSheet(event) {
 }
 async function markSent(id) {
   if (tmState.useSupabase) {
-    var result = await supabaseClient.from("time_material_sheets").update({ email_sent: true }).eq("id", id);
-    if (result.error) return alert(result.error.message);
+    await supabaseRequest("time_material_sheets?id=eq." + encodeURIComponent(id), { method: "PATCH", body: JSON.stringify({ email_sent: true }) });
   } else {
     tmState.sheets = tmState.sheets.map(function(sheet) { return String(sheet.id) === String(id) ? Object.assign({}, sheet, { email_sent: true }) : sheet; });
     localSave();
@@ -347,8 +368,7 @@ async function markSent(id) {
 }
 async function deleteSheet(id) {
   if (tmState.useSupabase) {
-    var result = await supabaseClient.from("time_material_sheets").delete().eq("id", id);
-    if (result.error) return alert(result.error.message);
+    await supabaseRequest("time_material_sheets?id=eq." + encodeURIComponent(id), { method: "DELETE" });
   } else {
     tmState.sheets = tmState.sheets.filter(function(sheet) { return String(sheet.id) !== String(id); });
     localSave();
@@ -583,3 +603,4 @@ document.addEventListener("click", function(event) {
   if (target.matches("[data-mark-sent]")) markSent(target.dataset.markSent);
   if (target.matches("[data-delete]")) deleteSheet(target.dataset.delete);
 });
+loadData();
