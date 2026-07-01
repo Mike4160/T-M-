@@ -433,135 +433,142 @@ function excelEmpty(count) {
   return out;
 }
 function excelRow(cells) { return '<Row>' + cells.join('') + '</Row>'; }
-function excelSheetXml(sheet) {
+
+function crc32(bytes) {
+  var table = crc32.table || (crc32.table = Array.from({ length: 256 }, function(_, n) {
+    var c = n;
+    for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    return c >>> 0;
+  }));
+  var crc = -1;
+  for (var i = 0; i < bytes.length; i++) crc = (crc >>> 8) ^ table[(crc ^ bytes[i]) & 0xFF];
+  return (crc ^ -1) >>> 0;
+}
+function utf8Bytes(text) { return new TextEncoder().encode(text); }
+function concatBytes(parts) {
+  var length = parts.reduce(function(total, part) { return total + part.length; }, 0);
+  var out = new Uint8Array(length);
+  var offset = 0;
+  parts.forEach(function(part) { out.set(part, offset); offset += part.length; });
+  return out;
+}
+function u16(value) { return new Uint8Array([value & 255, (value >>> 8) & 255]); }
+function u32(value) { return new Uint8Array([value & 255, (value >>> 8) & 255, (value >>> 16) & 255, (value >>> 24) & 255]); }
+function makeZip(entries) {
+  var localParts = [];
+  var centralParts = [];
+  var offset = 0;
+  entries.forEach(function(entry) {
+    var name = utf8Bytes(entry.name);
+    var data = entry.bytes || utf8Bytes(entry.text || '');
+    var crc = crc32(data);
+    var local = concatBytes([u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0), name, data]);
+    localParts.push(local);
+    var central = concatBytes([u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset), name]);
+    centralParts.push(central);
+    offset += local.length;
+  });
+  var central = concatBytes(centralParts);
+  var local = concatBytes(localParts);
+  var end = concatBytes([u32(0x06054b50), u16(0), u16(0), u16(entries.length), u16(entries.length), u32(central.length), u32(local.length), u16(0)]);
+  return new Blob([local, central, end], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+function colName(n) {
+  var s = '';
+  while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+function xlsxCell(row, col, value, style, formula) {
+  var ref = colName(col) + row;
+  var attrs = ' r="' + ref + '"' + (style ? ' s="' + style + '"' : '');
+  if (formula) return '<c' + attrs + '><f>' + xmlEscape(formula) + '</f></c>';
+  if (typeof value === 'number') return '<c' + attrs + '><v>' + value + '</v></c>';
+  return '<c' + attrs + ' t="inlineStr"><is><t>' + xmlEscape(value == null ? '' : value) + '</t></is></c>';
+}
+function xlsxRow(rowNum, cells, height) {
+  return '<row r="' + rowNum + '"' + (height ? ' ht="' + height + '" customHeight="1"' : '') + '>' + cells.join('') + '</row>';
+}
+function pngBytesFromDataUrl(dataUrl) {
+  if (!dataUrl) return null;
+  var base64 = dataUrl.split(',')[1] || '';
+  var binary = atob(base64);
+  var bytes = new Uint8Array(binary.length);
+  for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+function makeXlsxBlob(sheet) {
   var employees = getEmployees(sheet);
   var materials = getMaterialItems(sheet);
   var equipment = getEquipmentItems(sheet);
-  var row = 1;
-  function td(value, cls, extra) { return '<td class="' + (cls || '') + '" ' + (extra || '') + '>' + escapeHtml(value == null ? '' : value) + '</td>'; }
-  function formula(expr, cls) { return '<td class="' + (cls || 'money') + '">=' + expr + '</td>'; }
-  function spacerRow() { html += '<tr class="spacer"><td colspan="4"></td></tr>'; row++; }
-  var html = '<html><head><meta charset="utf-8"><style>' +
-    'body{font-family:Arial,sans-serif}.sheet{width:100%}table{border-collapse:collapse;width:100%}td,th{border:1px solid #111;padding:7px;vertical-align:top}th{background:#e9eeec;text-align:left}.title{font-size:22px;font-weight:bold;border:0}.section{background:#111;color:#fff;font-weight:bold;text-transform:uppercase}.label{background:#f4f6f5;font-weight:bold}.money{mso-number-format:"$#,##0.00";text-align:right}.num{mso-number-format:"0.00";text-align:right}.total{background:#e9eeec;font-weight:bold}.grand{background:#dce4e1;font-weight:bold;font-size:14px}.wrap{white-space:normal}.signature{height:90px}.signature-image{height:90px;background-repeat:no-repeat;background-size:contain;background-position:left center}.spacer td{border:0;height:16px;background:#fff}' +
-    '</style></head><body><table class="sheet">';
-  html += '<tr><td class="title" colspan="4">TIME AND MATERIAL SHEET</td></tr>'; row++;
-  html += '<tr>' + td('Project','label') + td(sheet.project || '') + td('Job Number','label') + td(sheet.sheet_number || '') + '</tr>'; row++;
-  html += '<tr>' + td('Date','label') + td(sheet.work_date || '') + td('Requested By','label') + td(sheet.requested_by || '') + '</tr>'; row++;
-  html += '<tr>' + td('Location','label') + td(sheet.location || '') + td('Signed','label') + td(sheet.signature_data ? 'Yes' : 'No') + '</tr>'; row++;
-  spacerRow();
-  html += '<tr><td class="section" colspan="4">Work Performed</td></tr>'; row++;
-  html += '<tr><td class="wrap" colspan="4">' + escapeHtml(sheet.work_performed || '') + '</td></tr>'; row++;
-  spacerRow();
-  html += '<tr><td class="section" colspan="4">Employees</td></tr>'; row++;
-  html += '<tr><th>Name</th><th>Hours</th><th>Rate</th><th>Total</th></tr>'; row++;
-  var employeeStart = row;
-  var employeeList = employees.length ? employees : [{ name: '', hours: 0, rate: 0 }];
-  employeeList.forEach(function(employee) {
-    html += '<tr>' + td(employee.name || '') + td(employee.hours || 0, 'num') + td(employee.rate || 0, 'money') + formula('B' + row + '*C' + row) + '</tr>';
-    row++;
-  });
-  var employeeEnd = row - 1;
-  var laborTotalRow = row;
-  html += '<tr>' + td('Labor Total','total') + '<td class="total"></td><td class="total"></td>' + formula('SUM(D' + employeeStart + ':D' + employeeEnd + ')', 'money total') + '</tr>'; row++;
-  spacerRow();
-  html += '<tr><td class="section" colspan="4">Material Used</td></tr>'; row++;
-  html += '<tr><th>Material</th><th>Amount Used</th><th>Unit Price</th><th>Total</th></tr>'; row++;
-  var materialStart = row;
-  var materialList = materials.length ? materials : [{ description: '', amount: 0, unit_price: 0 }];
-  materialList.forEach(function(item) {
-    html += '<tr>' + td(item.description || '') + td(item.amount || 0, 'num') + td(item.unit_price || 0, 'money') + formula('B' + row + '*C' + row) + '</tr>';
-    row++;
-  });
-  var materialEnd = row - 1;
-  var materialTotalRow = row;
-  html += '<tr>' + td('Material Total','total') + '<td class="total"></td><td class="total"></td>' + formula('SUM(D' + materialStart + ':D' + materialEnd + ')', 'money total') + '</tr>'; row++;
-  spacerRow();
-  html += '<tr><td class="section" colspan="4">Equipment / Other</td></tr>'; row++;
-  html += '<tr><th colspan="3">Description</th><th>Cost</th></tr>'; row++;
-  var equipmentStart = row;
-  var equipmentList = equipment.length ? equipment : [{ description: '', cost: 0 }];
-  equipmentList.forEach(function(item) {
-    html += '<tr><td colspan="3">' + escapeHtml(item.description || '') + '</td>' + td(item.cost || 0, 'money') + '</tr>';
-    row++;
-  });
-  var equipmentEnd = row - 1;
-  var equipmentTotalRow = row;
-  html += '<tr>' + td('Equipment / Other Total','total') + '<td class="total"></td><td class="total"></td>' + formula('SUM(D' + equipmentStart + ':D' + equipmentEnd + ')', 'money total') + '</tr>'; row++;
-  spacerRow();
-  html += '<tr>' + td('Grand Total','grand') + '<td class="grand"></td><td class="grand"></td>' + formula('D' + laborTotalRow + '+D' + materialTotalRow + '+D' + equipmentTotalRow, 'money grand') + '</tr>'; row++;
-  spacerRow();
-  html += '<tr><td class="section" colspan="4">Notes</td></tr>'; row++;
-  html += '<tr><td class="wrap" colspan="4">' + escapeHtml(sheet.notes || '') + '</td></tr>'; row++;
-  html += '<tr><td class="label" colspan="2">Authorized Signature</td><td class="label" colspan="2">Printed Name / Date</td></tr>'; row++;
-  html += '<tr><td class="signature signature-image" colspan="2" style="' + (sheet.signature_data ? 'background-image:url(' + sheet.signature_data + ')' : '') + '"></td><td class="signature" colspan="2">' + escapeHtml(sheet.printed_name || '') + '</td></tr>'; row++;
-  html += '</table></body></html>';
-  return html;
+  var rows = [];
+  var r = 1;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'TIME AND MATERIAL SHEET',1)])); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Project',2), xlsxCell(r,2,sheet.project || ''), xlsxCell(r,3,'Job Number',2), xlsxCell(r,4,sheet.sheet_number || '')])); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Date',2), xlsxCell(r,2,sheet.work_date || ''), xlsxCell(r,3,'Requested By',2), xlsxCell(r,4,sheet.requested_by || '')])); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Location',2), xlsxCell(r,2,sheet.location || ''), xlsxCell(r,3,'Signed',2), xlsxCell(r,4,sheet.signature_data ? 'Yes' : 'No')])); r++;
+  rows.push(xlsxRow(r, [])); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Work Performed',3)])); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,sheet.work_performed || '',4)], 45)); r++;
+  rows.push(xlsxRow(r, [])); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Employees',3)])); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Name',5), xlsxCell(r,2,'Hours',5), xlsxCell(r,3,'Rate',5), xlsxCell(r,4,'Total',5)])); r++;
+  var employeeStart = r;
+  (employees.length ? employees : [{name:'',hours:0,rate:0}]).forEach(function(e) { rows.push(xlsxRow(r, [xlsxCell(r,1,e.name || ''), xlsxCell(r,2,Number(e.hours || 0),6), xlsxCell(r,3,Number(e.rate || 0),7), xlsxCell(r,4,null,7,'B'+r+'*C'+r)])); r++; });
+  var employeeEnd = r - 1;
+  var laborTotalRow = r;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Labor Total',8), xlsxCell(r,2,''), xlsxCell(r,3,''), xlsxCell(r,4,null,9,'SUM(D'+employeeStart+':D'+employeeEnd+')')])); r++;
+  rows.push(xlsxRow(r, [])); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Material Used',3)])); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Material',5), xlsxCell(r,2,'Amount Used',5), xlsxCell(r,3,'Unit Price',5), xlsxCell(r,4,'Total',5)])); r++;
+  var materialStart = r;
+  (materials.length ? materials : [{description:'',amount:0,unit_price:0}]).forEach(function(m) { rows.push(xlsxRow(r, [xlsxCell(r,1,m.description || ''), xlsxCell(r,2,Number(m.amount || 0),6), xlsxCell(r,3,Number(m.unit_price || 0),7), xlsxCell(r,4,null,7,'B'+r+'*C'+r)])); r++; });
+  var materialEnd = r - 1;
+  var materialTotalRow = r;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Material Total',8), xlsxCell(r,2,''), xlsxCell(r,3,''), xlsxCell(r,4,null,9,'SUM(D'+materialStart+':D'+materialEnd+')')])); r++;
+  rows.push(xlsxRow(r, [])); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Equipment / Other',3)])); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Description',5), xlsxCell(r,2,''), xlsxCell(r,3,''), xlsxCell(r,4,'Cost',5)])); r++;
+  var equipmentStart = r;
+  (equipment.length ? equipment : [{description:'',cost:0}]).forEach(function(eq) { rows.push(xlsxRow(r, [xlsxCell(r,1,eq.description || ''), xlsxCell(r,2,''), xlsxCell(r,3,''), xlsxCell(r,4,Number(eq.cost || 0),7)])); r++; });
+  var equipmentEnd = r - 1;
+  var equipmentTotalRow = r;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Equipment / Other Total',8), xlsxCell(r,2,''), xlsxCell(r,3,''), xlsxCell(r,4,null,9,'SUM(D'+equipmentStart+':D'+equipmentEnd+')')])); r++;
+  rows.push(xlsxRow(r, [])); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Grand Total',10), xlsxCell(r,2,''), xlsxCell(r,3,''), xlsxCell(r,4,null,11,'D'+laborTotalRow+'+D'+materialTotalRow+'+D'+equipmentTotalRow)])); r++;
+  rows.push(xlsxRow(r, [])); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Notes',3)])); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,sheet.notes || '',4)], 35)); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Authorized Signature',2), xlsxCell(r,2,''), xlsxCell(r,3,'Printed Name / Date',2), xlsxCell(r,4,'')])); r++;
+  var sigRow = r;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,''), xlsxCell(r,2,''), xlsxCell(r,3,sheet.printed_name || ''), xlsxCell(r,4,'')], 80)); r++;
+  var hasSig = !!sheet.signature_data;
+  var sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><cols><col min="1" max="1" width="28" customWidth="1"/><col min="2" max="2" width="16" customWidth="1"/><col min="3" max="3" width="16" customWidth="1"/><col min="4" max="4" width="18" customWidth="1"/></cols><sheetData>' + rows.join('') + '</sheetData>' + (hasSig ? '<drawing r:id="rId1"/>' : '') + '</worksheet>';
+  var styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="2"><numFmt numFmtId="164" formatCode="$#,##0.00"/><numFmt numFmtId="165" formatCode="0.00"/></numFmts><fonts count="4"><font><sz val="10"/><name val="Arial"/></font><font><b/><sz val="18"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="10"/><name val="Arial"/></font><font><b/><sz val="10"/><name val="Arial"/></font></fonts><fills count="5"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF111111"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE9EEEC"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDCE4E1"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/><diagonal/></border></borders><cellXfs count="12"><xf fontId="0" fillId="0" borderId="1" xfId="0"/><xf fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1"/><xf fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1"/><xf fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1"/><xf fontId="0" fillId="0" borderId="1" xfId="0" numFmtId="165" applyNumberFormat="1"/><xf fontId="0" fillId="0" borderId="1" xfId="0" numFmtId="164" applyNumberFormat="1"/><xf fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1"/><xf fontId="3" fillId="3" borderId="1" xfId="0" numFmtId="164" applyFont="1" applyFill="1" applyNumberFormat="1"/><xf fontId="3" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1"/><xf fontId="3" fillId="4" borderId="1" xfId="0" numFmtId="164" applyFont="1" applyFill="1" applyNumberFormat="1"/></cellXfs></styleSheet>';
+  var contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' + (hasSig ? '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>' : '') + '</Types>';
+  var rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+  var workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="T&amp;M Sheet" sheetId="1" r:id="rId1"/></sheets></workbook>';
+  var workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
+  var entries = [{name:'[Content_Types].xml', text:contentTypes},{name:'_rels/.rels', text:rels},{name:'xl/workbook.xml', text:workbook},{name:'xl/_rels/workbook.xml.rels', text:workbookRels},{name:'xl/styles.xml', text:styles},{name:'xl/worksheets/sheet1.xml', text:sheetXml}];
+  if (hasSig) {
+    var drawing = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><xdr:twoCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>100000</xdr:colOff><xdr:row>'+(sigRow-1)+'</xdr:row><xdr:rowOff>100000</xdr:rowOff></xdr:from><xdr:to><xdr:col>2</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>'+(sigRow+1)+'</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="1" name="Signature"/><xdr:cNvPicPr/></xdr:nvPicPr><xdr:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:twoCellAnchor></xdr:wsDr>';
+    var drawingRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/signature.png"/></Relationships>';
+    var sheetRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>';
+    entries.push({name:'xl/worksheets/_rels/sheet1.xml.rels', text:sheetRels},{name:'xl/drawings/drawing1.xml', text:drawing},{name:'xl/drawings/_rels/drawing1.xml.rels', text:drawingRels},{name:'xl/media/signature.png', bytes:pngBytesFromDataUrl(sheet.signature_data)});
+  }
+  return makeZip(entries);
 }
 function excelFileName(sheet) {
   var baseName = ['TM', sheet.sheet_number || 'sheet', sheet.work_date || ''].join('-').replace(/[^a-z0-9-]+/gi, '-').replace(/-+/g, '-');
-  return baseName + '.xls';
+  return baseName + '.xlsx';
 }
 function downloadExcelSheet(id) {
   var sheet = tmState.sheets.find(function(item) { return String(item.id) === String(id); });
   if (!sheet) return;
-  var blob = new Blob([excelSheetXml(sheet)], { type: 'application/vnd.ms-excel' });
   var link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
+  link.href = URL.createObjectURL(makeXlsxBlob(sheet));
   link.download = excelFileName(sheet);
   link.click();
   URL.revokeObjectURL(link.href);
-}
-
-function formattedSheetHtml(sheet) {
-  var employees = getEmployees(sheet);
-  var equipment = getEquipmentItems(sheet);
-  var materials = getMaterialItems(sheet);
-  var employeeRows = employees.map(function(employee) {
-    var lineTotal = Number(employee.hours || 0) * Number(employee.rate || 0);
-    return '<tr><td>' + escapeHtml(employee.name || '') + '</td><td class="num">' + escapeHtml(employee.hours || 0) + '</td><td class="num">' + money(employee.rate || 0) + '</td><td class="num">' + money(lineTotal) + '</td></tr>';
-  }).join('') || '<tr><td colspan="4">No employees listed.</td></tr>';
-  var materialRows = materials.map(function(item) {
-    return '<tr><td>' + escapeHtml(item.description || '') + '</td><td class="num">' + escapeHtml(item.amount || 0) + '</td><td class="num">' + money(item.unit_price || 0) + '</td><td class="num">' + money(materialLineTotal(item)) + '</td></tr>';
-  }).join('') || '<tr><td colspan="4">No materials listed.</td></tr>';
-  var equipmentRows = equipment.map(function(item) {
-    return '<tr><td>' + escapeHtml(item.description || '') + '</td><td class="num">' + money(item.cost || 0) + '</td></tr>';
-  }).join('') || '<tr><td colspan="2">No equipment or other costs listed.</td></tr>';
-  var signature = sheet.signature_data ? '<img class="signature-image" src="' + sheet.signature_data + '" alt="Signature">' : '<div class="signature-line"></div>';
-  return '<!doctype html><html><head><meta charset="utf-8"><title>T&M Sheet</title><style>' +
-    'body{margin:0;background:#e9eeec;font-family:Arial,sans-serif;color:#111} .sheet{width:8.5in;min-height:11in;margin:20px auto;background:#fff;padding:.35in;box-shadow:0 12px 36px rgba(0,0,0,.18)} .head{display:grid;grid-template-columns:110px 1fr;gap:18px;align-items:center;border-bottom:4px solid #111;padding-bottom:14px} .logo{max-width:105px;max-height:90px;object-fit:contain}.title h1{margin:0;font-size:30px;letter-spacing:.5px}.title p{margin:5px 0 0;font-weight:700;color:#1d6f5f;text-transform:uppercase}.meta{display:grid;grid-template-columns:repeat(4,1fr);border:2px solid #111;margin-top:16px}.box{border-right:1px solid #111;padding:8px;min-height:48px}.box:last-child{border-right:0}.label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:5px}.value{font-size:15px;font-weight:700}.section{margin-top:24px}.section h2{font-size:16px;margin:0;background:#111;color:#fff;padding:8px 10px;text-transform:uppercase;letter-spacing:.3px}.textblock{border:1px solid #111;border-top:0;min-height:78px;padding:10px;line-height:1.35}table{width:100%;border-collapse:collapse;border:1px solid #111;border-top:0}th,td{border:1px solid #111;padding:8px;text-align:left;vertical-align:top}th{background:#f1f3f2;text-transform:uppercase;font-size:12px}.num{text-align:right}.totals{margin-left:auto;margin-top:24px;width:330px;border:2px solid #111}.total-row{display:flex;justify-content:space-between;border-bottom:1px solid #111;padding:8px 10px}.total-row:last-child{border-bottom:0;background:#f1f3f2;font-size:18px;font-weight:800}.signature-wrap{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:28px}.signature-box{border:1px solid #111;min-height:105px;padding:8px}.signature-line{height:42px;border-bottom:2px solid #111;margin-top:14px}.printed-name{min-height:24px;font-size:16px;font-weight:700;margin-top:10px}.signature-image{max-width:100%;max-height:75px;display:block}.footer{margin-top:16px;font-size:11px;color:#555}@media print{body{background:#fff}.sheet{margin:0;box-shadow:none;width:auto;min-height:auto}.no-print{display:none}}' +
-    '</style></head><body><div class="sheet"><header class="head"><img class="logo" src="logo.png" alt="Logo"><div class="title"><p>Time and Material Sheet</p><h1>' + escapeHtml(sheet.project || 'T&M Work') + '</h1></div></header>' +
-    '<section class="meta"><div class="box"><span class="label">Date</span><span class="value">' + escapeHtml(sheet.work_date || '') + '</span></div><div class="box"><span class="label">Job Number</span><span class="value">' + escapeHtml(sheet.sheet_number || '') + '</span></div><div class="box"><span class="label">Requested By</span><span class="value">' + escapeHtml(sheet.requested_by || '') + '</span></div><div class="box"><span class="label">Location</span><span class="value">' + escapeHtml(sheet.location || '') + '</span></div></section>' +
-    '<section class="section"><h2>Work Performed</h2><div class="textblock">' + escapeHtml(sheet.work_performed || '') + '</div></section>' +
-    '<section class="section"><h2>Employees</h2><table><thead><tr><th>Name</th><th class="num">Hours</th><th class="num">Rate</th><th class="num">Total</th></tr></thead><tbody>' + employeeRows + '</tbody></table></section>' +
-    '<section class="section"><h2>Material Used</h2><table><thead><tr><th>Material</th><th class="num">Amount Used</th><th class="num">Unit Price</th><th class="num">Total</th></tr></thead><tbody>' + materialRows + '</tbody></table></section>' +
-    '<section class="section"><h2>Equipment / Other</h2><table><thead><tr><th>Description</th><th class="num">Cost</th></tr></thead><tbody>' + equipmentRows + '</tbody></table></section>' +
-    '<div class="totals"><div class="total-row"><span>Labor Total</span><strong>' + money(employeeLaborTotal(sheet)) + '</strong></div><div class="total-row"><span>Material Total</span><strong>' + money(materialTotal(sheet)) + '</strong></div><div class="total-row"><span>Equipment / Other</span><strong>' + money(equipmentTotal(sheet)) + '</strong></div><div class="total-row"><span>Total</span><strong>' + money(sheetTotal(sheet)) + '</strong></div></div>' +
-    '<section class="section"><h2>Notes</h2><div class="textblock">' + escapeHtml(sheet.notes || '') + '</div></section>' +
-    '<section class="signature-wrap"><div class="signature-box"><span class="label">Authorized Signature</span>' + signature + '</div><div class="signature-box"><span class="label">Printed Name / Date</span><div class="printed-name">' + escapeHtml(sheet.printed_name || '') + '</div><div class="signature-line"></div></div></section>' +
-    '<p class="footer">Generated from the T&M Sheet Sender.</p><p class="no-print"><button onclick="window.print()">Print / Save as PDF</button></p></div></body></html>';
-}
-function sheetFileName(sheet) {
-  var baseName = ['TM', sheet.sheet_number || 'sheet', sheet.work_date || ''].join('-').replace(/[^a-z0-9-]+/gi, '-').replace(/-+/g, '-');
-  return baseName + '.doc';
-}
-function downloadSheet(id) {
-  var sheet = tmState.sheets.find(function(item) { return String(item.id) === String(id); });
-  if (!sheet) return;
-  var blob = new Blob([formattedSheetHtml(sheet)], { type: 'application/msword' });
-  var link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = sheetFileName(sheet);
-  link.click();
-  URL.revokeObjectURL(link.href);
-}
-function printSheet(id) {
-  var sheet = tmState.sheets.find(function(item) { return String(item.id) === String(id); });
-  if (!sheet) return;
-  var win = window.open('', '_blank');
-  if (!win) return alert('Please allow popups so the formatted T&M sheet can open.');
-  win.document.open();
-  win.document.write(formattedSheetHtml(sheet));
-  win.document.close();
 }
 
 function exportCsv() {
