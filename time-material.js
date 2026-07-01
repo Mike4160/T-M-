@@ -77,6 +77,14 @@ function signatureData() {
   if (!canvas || signatureIsEmpty) return "";
   return canvas.toDataURL("image/png");
 }
+function ensurePrintedNameField() {
+  if ($("#printedName")) return;
+  var signatureSection = document.querySelector(".signature-section");
+  if (!signatureSection) return;
+  var label = document.createElement("label");
+  label.innerHTML = 'Printed name<input id="printedName" placeholder="Printed name">';
+  signatureSection.appendChild(label);
+}
 function configured() { return window.MATERIAL_APP_SUPABASE_URL && !window.MATERIAL_APP_SUPABASE_URL.includes("PASTE_") && window.MATERIAL_APP_SUPABASE_ANON_KEY && !window.MATERIAL_APP_SUPABASE_ANON_KEY.includes("PASTE_"); }
 function supabaseHeaders(extra) {
   return Object.assign({
@@ -568,6 +576,7 @@ function exportCsv() {
 }
 $("#workDate").value = new Date().toISOString().slice(0, 10);
 ensureMaterialSection();
+ensurePrintedNameField();
 setupSignaturePad();
 resetEmployees();
 resetMaterials();
