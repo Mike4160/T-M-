@@ -175,7 +175,8 @@ function emailFor(sheet) {
     "Total: " + money(sheetTotal(sheet)),
     "",
     "Notes: " + (sheet.notes || "None"),
-    "Signature: " + (sheet.signature_data ? "Signed on file" : "Not signed")
+    "Signature: " + (sheet.signature_data ? "Signed" : "Not signed"),
+    "Printed Name: " + (sheet.printed_name || "N/A")
   ].join("\n");
   return { subject: subject, body: body, href: "mailto:" + encodeURIComponent(sheet.send_to || "") + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body) };
 }
@@ -330,6 +331,7 @@ function readForm() {
     send_to: $("#sendTo").value.trim(),
     notes: $("#notes").value.trim(),
     signature_data: signatureData(),
+    printed_name: $("#printedName").value.trim(),
     email_sent: false,
     created_at: new Date().toISOString()
   };
@@ -354,6 +356,7 @@ async function addSheet(event) {
   resetMaterials();
   resetEquipment();
   clearSignature();
+  $("#printedName").value = "";
   await loadData();
   showEmailPreview(saved);
 }
@@ -431,7 +434,7 @@ function excelSheetXml(sheet) {
   function formula(expr, cls) { return '<td class="' + (cls || 'money') + '">=' + expr + '</td>'; }
   function spacerRow() { html += '<tr class="spacer"><td colspan="4"></td></tr>'; row++; }
   var html = '<html><head><meta charset="utf-8"><style>' +
-    'body{font-family:Arial,sans-serif}.sheet{width:100%}table{border-collapse:collapse;width:100%}td,th{border:1px solid #111;padding:7px;vertical-align:top}th{background:#e9eeec;text-align:left}.title{font-size:22px;font-weight:bold;border:0}.section{background:#111;color:#fff;font-weight:bold;text-transform:uppercase}.label{background:#f4f6f5;font-weight:bold}.money{mso-number-format:"$#,##0.00";text-align:right}.num{mso-number-format:"0.00";text-align:right}.total{background:#e9eeec;font-weight:bold}.grand{background:#dce4e1;font-weight:bold;font-size:14px}.wrap{white-space:normal}.signature{height:90px}.signature img{max-height:85px;max-width:280px}.spacer td{border:0;height:16px;background:#fff}' +
+    'body{font-family:Arial,sans-serif}.sheet{width:100%}table{border-collapse:collapse;width:100%}td,th{border:1px solid #111;padding:7px;vertical-align:top}th{background:#e9eeec;text-align:left}.title{font-size:22px;font-weight:bold;border:0}.section{background:#111;color:#fff;font-weight:bold;text-transform:uppercase}.label{background:#f4f6f5;font-weight:bold}.money{mso-number-format:"$#,##0.00";text-align:right}.num{mso-number-format:"0.00";text-align:right}.total{background:#e9eeec;font-weight:bold}.grand{background:#dce4e1;font-weight:bold;font-size:14px}.wrap{white-space:normal}.signature{height:90px}.signature-image{height:90px;background-repeat:no-repeat;background-size:contain;background-position:left center}.spacer td{border:0;height:16px;background:#fff}' +
     '</style></head><body><table class="sheet">';
   html += '<tr><td class="title" colspan="4">TIME AND MATERIAL SHEET</td></tr>'; row++;
   html += '<tr>' + td('Project','label') + td(sheet.project || '') + td('Job Number','label') + td(sheet.sheet_number || '') + '</tr>'; row++;
@@ -482,7 +485,7 @@ function excelSheetXml(sheet) {
   html += '<tr><td class="section" colspan="4">Notes</td></tr>'; row++;
   html += '<tr><td class="wrap" colspan="4">' + escapeHtml(sheet.notes || '') + '</td></tr>'; row++;
   html += '<tr><td class="label" colspan="2">Authorized Signature</td><td class="label" colspan="2">Printed Name / Date</td></tr>'; row++;
-  html += '<tr><td class="signature" colspan="2">' + (sheet.signature_data ? '<img src="' + sheet.signature_data + '" alt="Signature">' : '') + '</td><td class="signature" colspan="2"></td></tr>'; row++;
+  html += '<tr><td class="signature signature-image" colspan="2" style="' + (sheet.signature_data ? 'background-image:url(' + sheet.signature_data + ')' : '') + '"></td><td class="signature" colspan="2">' + escapeHtml(sheet.printed_name || '') + '</td></tr>'; row++;
   html += '</table></body></html>';
   return html;
 }
@@ -517,7 +520,7 @@ function formattedSheetHtml(sheet) {
   }).join('') || '<tr><td colspan="2">No equipment or other costs listed.</td></tr>';
   var signature = sheet.signature_data ? '<img class="signature-image" src="' + sheet.signature_data + '" alt="Signature">' : '<div class="signature-line"></div>';
   return '<!doctype html><html><head><meta charset="utf-8"><title>T&M Sheet</title><style>' +
-    'body{margin:0;background:#e9eeec;font-family:Arial,sans-serif;color:#111} .sheet{width:8.5in;min-height:11in;margin:20px auto;background:#fff;padding:.35in;box-shadow:0 12px 36px rgba(0,0,0,.18)} .head{display:grid;grid-template-columns:110px 1fr;gap:18px;align-items:center;border-bottom:4px solid #111;padding-bottom:14px} .logo{max-width:105px;max-height:90px;object-fit:contain}.title h1{margin:0;font-size:30px;letter-spacing:.5px}.title p{margin:5px 0 0;font-weight:700;color:#1d6f5f;text-transform:uppercase}.meta{display:grid;grid-template-columns:repeat(4,1fr);border:2px solid #111;margin-top:16px}.box{border-right:1px solid #111;padding:8px;min-height:48px}.box:last-child{border-right:0}.label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:5px}.value{font-size:15px;font-weight:700}.section{margin-top:24px}.section h2{font-size:16px;margin:0;background:#111;color:#fff;padding:8px 10px;text-transform:uppercase;letter-spacing:.3px}.textblock{border:1px solid #111;border-top:0;min-height:78px;padding:10px;line-height:1.35}table{width:100%;border-collapse:collapse;border:1px solid #111;border-top:0}th,td{border:1px solid #111;padding:8px;text-align:left;vertical-align:top}th{background:#f1f3f2;text-transform:uppercase;font-size:12px}.num{text-align:right}.totals{margin-left:auto;margin-top:24px;width:330px;border:2px solid #111}.total-row{display:flex;justify-content:space-between;border-bottom:1px solid #111;padding:8px 10px}.total-row:last-child{border-bottom:0;background:#f1f3f2;font-size:18px;font-weight:800}.signature-wrap{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:28px}.signature-box{border:1px solid #111;min-height:105px;padding:8px}.signature-line{height:62px;border-bottom:2px solid #111;margin-top:14px}.signature-image{max-width:100%;max-height:75px;display:block}.footer{margin-top:16px;font-size:11px;color:#555}@media print{body{background:#fff}.sheet{margin:0;box-shadow:none;width:auto;min-height:auto}.no-print{display:none}}' +
+    'body{margin:0;background:#e9eeec;font-family:Arial,sans-serif;color:#111} .sheet{width:8.5in;min-height:11in;margin:20px auto;background:#fff;padding:.35in;box-shadow:0 12px 36px rgba(0,0,0,.18)} .head{display:grid;grid-template-columns:110px 1fr;gap:18px;align-items:center;border-bottom:4px solid #111;padding-bottom:14px} .logo{max-width:105px;max-height:90px;object-fit:contain}.title h1{margin:0;font-size:30px;letter-spacing:.5px}.title p{margin:5px 0 0;font-weight:700;color:#1d6f5f;text-transform:uppercase}.meta{display:grid;grid-template-columns:repeat(4,1fr);border:2px solid #111;margin-top:16px}.box{border-right:1px solid #111;padding:8px;min-height:48px}.box:last-child{border-right:0}.label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;color:#555;margin-bottom:5px}.value{font-size:15px;font-weight:700}.section{margin-top:24px}.section h2{font-size:16px;margin:0;background:#111;color:#fff;padding:8px 10px;text-transform:uppercase;letter-spacing:.3px}.textblock{border:1px solid #111;border-top:0;min-height:78px;padding:10px;line-height:1.35}table{width:100%;border-collapse:collapse;border:1px solid #111;border-top:0}th,td{border:1px solid #111;padding:8px;text-align:left;vertical-align:top}th{background:#f1f3f2;text-transform:uppercase;font-size:12px}.num{text-align:right}.totals{margin-left:auto;margin-top:24px;width:330px;border:2px solid #111}.total-row{display:flex;justify-content:space-between;border-bottom:1px solid #111;padding:8px 10px}.total-row:last-child{border-bottom:0;background:#f1f3f2;font-size:18px;font-weight:800}.signature-wrap{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:28px}.signature-box{border:1px solid #111;min-height:105px;padding:8px}.signature-line{height:42px;border-bottom:2px solid #111;margin-top:14px}.printed-name{min-height:24px;font-size:16px;font-weight:700;margin-top:10px}.signature-image{max-width:100%;max-height:75px;display:block}.footer{margin-top:16px;font-size:11px;color:#555}@media print{body{background:#fff}.sheet{margin:0;box-shadow:none;width:auto;min-height:auto}.no-print{display:none}}' +
     '</style></head><body><div class="sheet"><header class="head"><img class="logo" src="logo.png" alt="Logo"><div class="title"><p>Time and Material Sheet</p><h1>' + escapeHtml(sheet.project || 'T&M Work') + '</h1></div></header>' +
     '<section class="meta"><div class="box"><span class="label">Date</span><span class="value">' + escapeHtml(sheet.work_date || '') + '</span></div><div class="box"><span class="label">Job Number</span><span class="value">' + escapeHtml(sheet.sheet_number || '') + '</span></div><div class="box"><span class="label">Requested By</span><span class="value">' + escapeHtml(sheet.requested_by || '') + '</span></div><div class="box"><span class="label">Location</span><span class="value">' + escapeHtml(sheet.location || '') + '</span></div></section>' +
     '<section class="section"><h2>Work Performed</h2><div class="textblock">' + escapeHtml(sheet.work_performed || '') + '</div></section>' +
@@ -526,7 +529,7 @@ function formattedSheetHtml(sheet) {
     '<section class="section"><h2>Equipment / Other</h2><table><thead><tr><th>Description</th><th class="num">Cost</th></tr></thead><tbody>' + equipmentRows + '</tbody></table></section>' +
     '<div class="totals"><div class="total-row"><span>Labor Total</span><strong>' + money(employeeLaborTotal(sheet)) + '</strong></div><div class="total-row"><span>Material Total</span><strong>' + money(materialTotal(sheet)) + '</strong></div><div class="total-row"><span>Equipment / Other</span><strong>' + money(equipmentTotal(sheet)) + '</strong></div><div class="total-row"><span>Total</span><strong>' + money(sheetTotal(sheet)) + '</strong></div></div>' +
     '<section class="section"><h2>Notes</h2><div class="textblock">' + escapeHtml(sheet.notes || '') + '</div></section>' +
-    '<section class="signature-wrap"><div class="signature-box"><span class="label">Authorized Signature</span>' + signature + '</div><div class="signature-box"><span class="label">Printed Name / Date</span><div class="signature-line"></div></div></section>' +
+    '<section class="signature-wrap"><div class="signature-box"><span class="label">Authorized Signature</span>' + signature + '</div><div class="signature-box"><span class="label">Printed Name / Date</span><div class="printed-name">' + escapeHtml(sheet.printed_name || '') + '</div><div class="signature-line"></div></div></section>' +
     '<p class="footer">Generated from the T&M Sheet Sender.</p><p class="no-print"><button onclick="window.print()">Print / Save as PDF</button></p></div></body></html>';
 }
 function sheetFileName(sheet) {
