@@ -413,7 +413,7 @@ function render() {
     var email = emailFor(sheet);
     var statusClass = sheet.email_sent ? "sent" : "ready";
     var statusText = sheet.email_sent ? "Sent" : "Draft Ready";
-    return '<tr><td>' + esc(sheet.work_date) + '</td><td><strong>' + esc(sheet.sheet_number || "Job") + '</strong><br><span class="muted">' + esc(sheet.project || "") + '</span></td><td class="work-text">' + esc(sheet.work_performed) + '<br><span class="muted">' + esc(sheet.location || "") + '</span></td><td>' + esc(employeeHoursTotal(sheet)) + '<br><span class="muted">' + esc(employeeNames(sheet) || sheet.crew || '') + '</span></td><td>' + money(sheetTotal(sheet)) + '</td><td><span class="badge ' + statusClass + '">' + statusText + '</span></td><td><div class="row"><a class="btn primary" href="' + email.href + '">Open Draft</a><button class="btn" type="button" data-print-sheet="' + esc(sheet.id) + '">Print Sheet</button><button class="btn" type="button" data-download-sheet="' + esc(sheet.id) + '">Download Word</button><button class="btn" type="button" data-download-excel="' + esc(sheet.id) + '">Download Excel</button><button class="btn" type="button" data-preview="' + esc(sheet.id) + '">Preview</button><button class="btn" type="button" data-mark-sent="' + esc(sheet.id) + '">Mark Sent</button><button class="btn danger" type="button" data-delete="' + esc(sheet.id) + '">Delete</button></div></td></tr>';
+    return '<tr><td>' + esc(sheet.work_date) + '</td><td><strong>' + esc(sheet.sheet_number || "Job") + '</strong><br><span class="muted">' + esc(sheet.project || "") + '</span></td><td class="work-text">' + esc(sheet.work_performed) + '<br><span class="muted">' + esc(sheet.location || "") + '</span></td><td>' + esc(employeeHoursTotal(sheet)) + '<br><span class="muted">' + esc(employeeNames(sheet) || sheet.crew || '') + '</span></td><td>' + money(sheetTotal(sheet)) + '</td><td><span class="badge ' + statusClass + '">' + statusText + '</span></td><td><div class="row"><a class="btn primary" href="' + email.href + '">Open Draft</a><button class="btn" type="button" data-download-excel="' + esc(sheet.id) + '">Download Excel</button><button class="btn" type="button" data-preview="' + esc(sheet.id) + '">Preview</button><button class="btn" type="button" data-mark-sent="' + esc(sheet.id) + '">Mark Sent</button><button class="btn danger" type="button" data-delete="' + esc(sheet.id) + '">Delete</button></div></td></tr>';
   }).join("") || '<tr><td colspan="7">No T&M sheets logged yet.</td></tr>';
 }
 
@@ -535,9 +535,9 @@ function makeXlsxBlob(sheet) {
   rows.push(xlsxRow(r, [xlsxCell(r,1,'Equipment / Other Total',8), xlsxCell(r,2,''), xlsxCell(r,3,''), xlsxCell(r,4,null,9,'SUM(D'+equipmentStart+':D'+equipmentEnd+')')])); r++;
   var equipmentTotalRow = r - 1;
   var markupRow = r;
-  rows.push(xlsxRow(r, [xlsxCell(r,1,'Markup on Material',8), xlsxCell(r,2,'Percent'), xlsxCell(r,3,0,13), xlsxCell(r,4,null,9,'D'+materialTotalRow+'*C'+r)])); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Markup on Material / Equipment',8), xlsxCell(r,2,'Percent'), xlsxCell(r,3,0,13), xlsxCell(r,4,null,9,'(D'+materialTotalRow+'+D'+equipmentTotalRow+')*C'+r)])); r++;
   var taxRow = r;
-  rows.push(xlsxRow(r, [xlsxCell(r,1,'Taxes',8), xlsxCell(r,2,'Percent'), xlsxCell(r,3,0,13), xlsxCell(r,4,null,9,'(D'+laborTotalRow+'+D'+materialTotalRow+'+D'+equipmentTotalRow+'+D'+markupRow+')*C'+r)])); r++;
+  rows.push(xlsxRow(r, [xlsxCell(r,1,'Taxes on Material',8), xlsxCell(r,2,'Percent'), xlsxCell(r,3,0,13), xlsxCell(r,4,null,9,'D'+materialTotalRow+'*C'+r)])); r++;
   rows.push(xlsxRow(r, [])); r++;
   rows.push(xlsxRow(r, [xlsxCell(r,1,'Grand Total',10), xlsxCell(r,2,''), xlsxCell(r,3,''), xlsxCell(r,4,null,11,'D'+laborTotalRow+'+D'+materialTotalRow+'+D'+equipmentTotalRow+'+D'+markupRow+'+D'+taxRow)])); r++;
   rows.push(xlsxRow(r, [])); r++;
