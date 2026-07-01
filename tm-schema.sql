@@ -20,6 +20,7 @@ create table if not exists time_material_sheets (
   send_to text,
   notes text,
   signature_data text,
+  printed_name text,
   email_sent boolean not null default false,
   created_at timestamptz not null default now()
 );
@@ -30,6 +31,7 @@ alter table time_material_sheets add column if not exists employees jsonb;
 alter table time_material_sheets add column if not exists material_items jsonb;
 alter table time_material_sheets add column if not exists equipment_items jsonb;
 alter table time_material_sheets add column if not exists signature_data text;
+alter table time_material_sheets add column if not exists printed_name text;
 
 alter table time_material_sheets enable row level security;
 
